@@ -19,14 +19,14 @@ describe('ol.style.Style', function() {
       var feature = new ol.Feature();
       feature.set('myGeom', new ol.geom.Point([0, 0]));
       style.setGeometry('myGeom');
-      expect(style.getGeometryFunction()(feature))
+      expect(style.getGeometryFunction().call(style, feature))
           .to.eql(feature.get('myGeom'));
     });
 
     it('creates a geometry function from a geometry', function() {
       var geom = new ol.geom.Point([0, 0]);
       style.setGeometry(geom);
-      expect(style.getGeometryFunction()())
+      expect(style.getGeometryFunction().call(style))
           .to.eql(geom);
     });
 
@@ -35,7 +35,7 @@ describe('ol.style.Style', function() {
       style.setGeometry(function() {
         return geom;
       });
-      expect(style.getGeometryFunction()())
+      expect(style.getGeometryFunction().call(style))
           .to.eql(geom);
     });
   });
