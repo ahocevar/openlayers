@@ -70,12 +70,13 @@ ol.style.Style = function(opt_options) {
 
 
 /**
- * @return {!ol.style.GeometryFunction} Function that
- * is called with a feature and returns the geometry to render instead of the
- * feature's geometry.
+ * Get the geometry to be rendered for the provided feature.
+ * @param {ol.Feature} feature The feature to be rendered.
+ * @return {ol.geom.Geometry|undefined} The geometry to use for rendering.
+ * @api
  */
-ol.style.Style.prototype.getGeometryFunction = function() {
-  return this.geometryFunction_;
+ol.style.Style.prototype.getGeometry = function(feature) {
+  return this.geometryFunction_(feature);
 };
 
 
@@ -138,8 +139,9 @@ ol.style.Style.prototype.setGeometry = function(geometry) {
   } else if (goog.isString(geometry)) {
     this.geometryFunction_ = function(feature) {
       var result = feature.get(geometry);
-      goog.asserts.assert(!goog.isDefAndNotNull(result) ||
-          goog.asserts.assertInstanceof(result, ol.geom.Geometry));
+      if (goog.isDefAndNotNull(result)) {
+        goog.asserts.assertInstanceof(result, ol.geom.Geometry);
+      }
       return result;
     };
   } else if (goog.isDef(geometry)) {
@@ -319,8 +321,7 @@ ol.style.createDefaultEditingStyles = function() {
 
 /**
  * A function that takes an `{ol.Feature}` as argument and returns a geometry
- * that will be rendered and styled for the feature. The `this` keyword inside
- * the function references the style that will be applied to the feature.
+ * that will be rendered and styled for the feature.
  *
  * @typedef {function(ol.Feature): (ol.geom.Geometry|undefined)}
  * @api

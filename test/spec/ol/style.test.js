@@ -13,21 +13,22 @@ describe('ol.style.Style', function() {
   });
 
   describe('#setGeometry', function() {
-    var style = new ol.style.Style();
+    var style;
+    beforeEach(function() {
+      style = new ol.style.Style();
+    });
 
     it('creates a geometry function from a string', function() {
       var feature = new ol.Feature();
       feature.set('myGeom', new ol.geom.Point([0, 0]));
       style.setGeometry('myGeom');
-      expect(style.getGeometryFunction().call(style, feature))
-          .to.eql(feature.get('myGeom'));
+      expect(style.getGeometry(feature)).to.eql(feature.get('myGeom'));
     });
 
     it('creates a geometry function from a geometry', function() {
       var geom = new ol.geom.Point([0, 0]);
       style.setGeometry(geom);
-      expect(style.getGeometryFunction().call(style))
-          .to.eql(geom);
+      expect(style.getGeometry()).to.eql(geom);
     });
 
     it('returns the configured geometry function', function() {
@@ -35,9 +36,68 @@ describe('ol.style.Style', function() {
       style.setGeometry(function() {
         return geom;
       });
-      expect(style.getGeometryFunction().call(style))
-          .to.eql(geom);
+      expect(style.getGeometry()).to.eql(geom);
     });
+  });
+
+  describe('#getGeometry', function() {
+
+    it('calls feature.getGeometry() by default', function() {
+      var feature = new ol.Feature();
+      sinon.spy(feature, 'getGeometry');
+
+      var style = new ol.style.Style();
+      var got = style.getGeometry(feature);
+
+      expect(got).to.be(undefined);
+      expect(feature.getGeometry.calledOnce).to.be(true);
+    });
+
+    it('returns a geometry instance set on style', function() {
+      var point = new ol.geom.Point([0, 0]);
+      var feature = new ol.Feature();
+
+      var style = new ol.style.Style({
+        geometry: point
+      });
+      var got = style.getGeometry(feature);
+
+      expect(got).to.be(point);
+    });
+
+    it('can return an alternate geometry property', function() {
+      var defaultGeom = new ol.geom.Point([0, 0]);
+      var altGeom = new ol.geom.Point([1, 1]);
+
+      var feature = new ol.Feature(defaultGeom);
+      feature.set('alt', altGeom);
+
+      var style = new ol.style.Style({
+        geometry: 'alt'
+      });
+      var got = style.getGeometry(feature);
+
+      expect(got).to.be(altGeom);
+    });
+
+    it('calls a user provided geometry getter', function() {
+      var point = new ol.geom.Point([0, 0]);
+      var feature = new ol.Feature();
+
+      var getter = sinon.spy(function(feature) {
+        return point;
+      });
+
+      var style = new ol.style.Style({
+        geometry: getter
+      });
+      var got = style.getGeometry(feature);
+
+      expect(got).to.be(point);
+      expect(getter.calledOnce).to.be(true);
+      expect(getter.calledOn(style)).to.be(true);
+    });
+
   });
 
 });
