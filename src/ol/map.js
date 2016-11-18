@@ -1177,6 +1177,7 @@ ol.Map.prototype.render = function() {
     this.animationDelayKey_ = requestAnimationFrame(
         this.animationDelay_);
   }
+  this.prepareFrame_();
 };
 
 
@@ -1229,33 +1230,25 @@ ol.Map.prototype.removeOverlay = function(overlay) {
 };
 
 
-/**
- * @param {number} time Time.
- * @private
- */
-ol.Map.prototype.renderFrame_ = function(time) {
-  var i, ii, viewState;
-
+ol.Map.prototype.prepareFrame_ = function() {
   var size = this.getSize();
   var view = this.getView();
-  var extent = ol.extent.createEmpty();
-  /** @type {?olx.FrameState} */
   var frameState = null;
   if (size !== undefined && ol.size.hasArea(size) && view && view.isDef()) {
     var viewHints = view.getHints(this.frameState_ ? this.frameState_.viewHints : undefined);
+    var viewState = view.getState();
     var layerStatesArray = this.getLayerGroup().getLayerStatesArray();
     var layerStates = {};
-    for (i = 0, ii = layerStatesArray.length; i < ii; ++i) {
+    for (var i = 0, ii = layerStatesArray.length; i < ii; ++i) {
       layerStates[ol.getUid(layerStatesArray[i].layer)] = layerStatesArray[i];
     }
-    viewState = view.getState();
     frameState = /** @type {olx.FrameState} */ ({
       animate: false,
       attributions: {},
       coordinateToPixelTransform: this.coordinateToPixelTransform_,
-      extent: extent,
+      extent: ol.extent.getForViewAndSize(viewState.center,
+          viewState.resolution, viewState.rotation, size),
       focus: !this.focus_ ? viewState.center : this.focus_,
-      index: this.frameIndex_++,
       layerStates: layerStates,
       layerStatesArray: layerStatesArray,
       logos: ol.obj.assign({}, this.logos_),
@@ -1265,15 +1258,34 @@ ol.Map.prototype.renderFrame_ = function(time) {
       size: size,
       skippedFeatureUids: this.skippedFeatureUids_,
       tileQueue: this.tileQueue_,
-      time: time,
       usedTiles: {},
       viewState: viewState,
       viewHints: viewHints,
       wantedTiles: {}
     });
+    this.renderer_.prepareFrame(frameState);
   }
+  this.frameState_ = frameState;
+};
 
+
+/**
+ * @param {number} time Time.
+ * @private
+ */
+ol.Map.prototype.renderFrame_ = function(time) {
+  var i, ii, viewState;
+
+  var view = this.getView();
+  var extent;
+  /** @type {?olx.FrameState} */
+  var frameState = this.frameState_;
   if (frameState) {
+    viewState = view.getState();
+    frameState = this.frameState_;
+    extent = frameState.extent;
+    frameState.viewState = viewState;
+    frameState.index = this.frameIndex_++;
     var preRenderFunctions = this.preRenderFunctions_;
     var n = 0, preRenderFunction;
     for (i = 0, ii = preRenderFunctions.length; i < ii; ++i) {
@@ -1288,7 +1300,6 @@ ol.Map.prototype.renderFrame_ = function(time) {
         viewState.resolution, viewState.rotation, frameState.size, extent);
   }
 
-  this.frameState_ = frameState;
   this.renderer_.renderFrame(frameState);
 
   if (frameState) {

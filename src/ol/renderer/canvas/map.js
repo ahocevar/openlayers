@@ -51,6 +51,8 @@ ol.renderer.canvas.Map = function(container, map) {
   this.canvas_.className = ol.css.CLASS_UNSELECTABLE;
   container.insertBefore(this.canvas_, container.childNodes[0] || null);
 
+  this.prepared = {};
+
   /**
    * @private
    * @type {boolean}
@@ -140,13 +142,48 @@ ol.renderer.canvas.Map.prototype.getType = function() {
 /**
  * @inheritDoc
  */
-ol.renderer.canvas.Map.prototype.renderFrame = function(frameState) {
+ol.renderer.canvas.Map.prototype.prepareFrame = function(frameState) {
 
   if (!frameState) {
     if (this.renderedVisible_) {
       this.canvas_.style.display = 'none';
       this.renderedVisible_ = false;
     }
+    return;
+  }
+
+  var layerStatesArray = frameState.layerStatesArray;
+  ol.array.stableSort(layerStatesArray, ol.renderer.Map.sortByZIndex);
+
+  var viewResolution = frameState.viewState.resolution;
+  var i, ii, layer, layerRenderer, layerState;
+  for (i = 0, ii = layerStatesArray.length; i < ii; ++i) {
+    layerState = layerStatesArray[i];
+    layer = layerState.layer;
+    layerRenderer = /** @type {ol.renderer.canvas.Layer} */ (this.getLayerRenderer(layer));
+    if (!ol.layer.Layer.visibleAtResolution(layerState, viewResolution) ||
+        layerState.sourceState != ol.source.State.READY) {
+      continue;
+    }
+    this.prepared[ol.getUid(layer)] = layerRenderer.prepareFrame(frameState, layerState);
+  }
+
+  if (!this.renderedVisible_) {
+    this.canvas_.style.display = '';
+    this.renderedVisible_ = true;
+  }
+
+  this.scheduleRemoveUnusedLayerRenderers(frameState);
+  this.scheduleExpireIconCache(frameState);
+};
+
+
+/**
+ * @inheritDoc
+ */
+ol.renderer.canvas.Map.prototype.renderFrame = function(frameState) {
+
+  if (!frameState) {
     return;
   }
 
@@ -182,7 +219,7 @@ ol.renderer.canvas.Map.prototype.renderFrame = function(frameState) {
         layerState.sourceState != ol.source.State.READY) {
       continue;
     }
-    if (layerRenderer.prepareFrame(frameState, layerState)) {
+    if (this.prepared[ol.getUid(layer)]) {
       layerRenderer.composeFrame(frameState, layerState, context);
     }
   }
@@ -191,14 +228,6 @@ ol.renderer.canvas.Map.prototype.renderFrame = function(frameState) {
 
   this.dispatchComposeEvent_(
       ol.render.Event.Type.POSTCOMPOSE, frameState);
-
-  if (!this.renderedVisible_) {
-    this.canvas_.style.display = '';
-    this.renderedVisible_ = true;
-  }
-
-  this.scheduleRemoveUnusedLayerRenderers(frameState);
-  this.scheduleExpireIconCache(frameState);
 };
 
 

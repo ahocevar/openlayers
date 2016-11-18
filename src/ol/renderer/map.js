@@ -290,6 +290,13 @@ ol.renderer.Map.prototype.removeLayerRendererByKey_ = function(layerKey) {
 
 
 /**
+ * @abstract
+ * @param {olx.FrameState} frameState Frame state.
+ */
+ol.renderer.Map.prototype.prepareFrame = function(frameState) {};
+
+
+/**
  * Render.
  * @param {?olx.FrameState} frameState Frame state.
  */
