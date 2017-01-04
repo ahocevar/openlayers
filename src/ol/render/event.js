@@ -21,7 +21,9 @@ ol.render.Event = function(
   ol.events.Event.call(this, type);
 
   /**
-   * For canvas, this is an instance of {@link ol.render.canvas.Immediate}.
+   * For canvas, this is an instance of {@link ol.render.canvas.Immediate}. Only
+   * available in builds with the `ol.ENABLE_VECTOR_CONTEXT` define set to
+   * `true`.
    * @type {ol.render.VectorContext|undefined}
    * @api
    */

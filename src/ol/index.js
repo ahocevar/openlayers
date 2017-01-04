@@ -76,6 +76,13 @@ ol.ENABLE_RASTER_REPROJECTION = true;
 
 
 /**
+ * @define {boolean} Enable vector context for direct vector rendering. Default
+ *     is `true`.
+ */
+ol.ENABLE_VECTOR_CONTEXT = true;
+
+
+/**
  * @define {boolean} Enable the WebGL renderer.  Default is `true`. Setting
  *     this to false at compile time in advanced mode removes all code
  *     supporting the WebGL renderer from the build.

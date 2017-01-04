@@ -76,8 +76,11 @@ ol.renderer.canvas.Map.prototype.dispatchComposeEvent_ = function(type, frameSta
 
     var transform = this.getTransform(frameState);
 
-    var vectorContext = new ol.render.canvas.Immediate(context, pixelRatio,
-        extent, transform, rotation);
+    var vectorContext;
+    if (ol.ENABLE_VECTOR_CONTEXT) {
+      vectorContext = new ol.render.canvas.Immediate(context, pixelRatio,
+          extent, transform, rotation);
+    }
     var composeEvent = new ol.render.Event(type, vectorContext,
         frameState, context, null);
     map.dispatchEvent(composeEvent);
