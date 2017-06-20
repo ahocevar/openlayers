@@ -5,6 +5,7 @@ goog.require('ol.Tile');
 goog.require('ol.TileCoord');
 goog.require('ol.TileLoadFunctionType');
 goog.require('ol.TileState');
+goog.require('ol.dom');
 goog.require('ol.events');
 goog.require('ol.events.EventType');
 goog.require('ol.object');
@@ -33,7 +34,7 @@ ol.ImageTile = function(tileCoord, state, src, crossOrigin, tileLoadFunction) {
 
   /**
    * @private
-   * @type {Image}
+   * @type {Image|HTMLCanvasElement}
    */
   this.image_ = new Image();
   if (crossOrigin !== null) {
@@ -68,6 +69,7 @@ goog.inherits(ol.ImageTile, ol.Tile);
 ol.ImageTile.prototype.disposeInternal = function() {
   if (this.state == ol.TileState.LOADING) {
     this.unlistenImage_();
+    this.image_.src = ol.ImageTile.blankImage.toDataURL('image/png');
   }
   if (this.interimTile) {
     this.interimTile.dispose();
@@ -90,7 +92,7 @@ ol.ImageTile.prototype.getImage = function(opt_context) {
     if (key in this.imageByContext_) {
       return this.imageByContext_[key];
     } else if (ol.object.isEmpty(this.imageByContext_)) {
-      image = this.image_;
+      image = /** @type {Image} */ (this.image_);
     } else {
       image = /** @type {Image} */ (this.image_.cloneNode(false));
     }
@@ -118,6 +120,7 @@ ol.ImageTile.prototype.getKey = function() {
 ol.ImageTile.prototype.handleImageError_ = function() {
   this.state = ol.TileState.ERROR;
   this.unlistenImage_();
+  this.image_ = ol.ImageTile.blankImage;
   this.changed();
 };
 
@@ -169,3 +172,15 @@ ol.ImageTile.prototype.unlistenImage_ = function() {
   this.imageListenerKeys_.forEach(ol.events.unlistenByKey);
   this.imageListenerKeys_ = null;
 };
+
+
+/**
+ * A blank image.
+ * @type {HTMLCanvasElement}
+ */
+ol.ImageTile.blankImage = (function() {
+  var ctx = ol.dom.createCanvasContext2D(1, 1);
+  ctx.fillStyle = 'rgba(0,0,0,0)';
+  ctx.fillRect(0, 0, 1, 1);
+  return ctx.canvas;
+})();
