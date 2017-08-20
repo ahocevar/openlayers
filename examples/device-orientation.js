@@ -1,26 +1,26 @@
-goog.require('ol.DeviceOrientation');
-goog.require('ol.Map');
-goog.require('ol.View');
-goog.require('ol.control');
-goog.require('ol.layer.Tile');
-goog.require('ol.proj');
-goog.require('ol.source.OSM');
+import _ol_DeviceOrientation_ from '../src/ol/deviceorientation';
+import _ol_Map_ from '../src/ol/map';
+import _ol_View_ from '../src/ol/view';
+import _ol_control_ from '../src/ol/control';
+import _ol_layer_Tile_ from '../src/ol/layer/tile';
+import _ol_proj_ from '../src/ol/proj';
+import _ol_source_OSM_ from '../src/ol/source/osm';
 
-var projection = ol.proj.get('EPSG:3857');
-var view = new ol.View({
+var projection = _ol_proj_.get('EPSG:3857');
+var view = new _ol_View_({
   center: [0, 0],
   projection: projection,
   extent: projection.getExtent(),
   zoom: 2
 });
-var map = new ol.Map({
+var map = new _ol_Map_({
   layers: [
-    new ol.layer.Tile({
-      source: new ol.source.OSM()
+    new _ol_layer_Tile_({
+      source: new _ol_source_OSM_()
     })
   ],
   target: 'map',
-  controls: ol.control.defaults({
+  controls: _ol_control_.defaults({
     attributionOptions: /** @type {olx.control.AttributionOptions} */ ({
       collapsible: false
     })
@@ -28,7 +28,7 @@ var map = new ol.Map({
   view: view
 });
 
-var deviceOrientation = new ol.DeviceOrientation();
+var deviceOrientation = new _ol_DeviceOrientation_();
 
 function el(id) {
   return document.getElementById(id);

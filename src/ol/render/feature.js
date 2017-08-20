@@ -1,9 +1,6 @@
-goog.provide('ol.render.Feature');
-
-goog.require('ol');
-goog.require('ol.extent');
-goog.require('ol.geom.GeometryType');
-
+import _ol_ from '../index';
+import _ol_extent_ from '../extent';
+import _ol_geom_GeometryType_ from '../geom/geometrytype';
 
 /**
  * Lightweight, read-only, {@link ol.Feature} and {@link ol.geom.Geometry} like
@@ -18,7 +15,7 @@ goog.require('ol.geom.GeometryType');
  * @param {Object.<string, *>} properties Properties.
  * @param {number|string|undefined} id Feature id.
  */
-ol.render.Feature = function(type, flatCoordinates, ends, properties, id) {
+var _ol_render_Feature_ = function(type, flatCoordinates, ends, properties, id) {
   /**
    * @private
    * @type {ol.Extent|undefined}
@@ -63,7 +60,7 @@ ol.render.Feature = function(type, flatCoordinates, ends, properties, id) {
  * @return {*} Value for the requested key.
  * @api
  */
-ol.render.Feature.prototype.get = function(key) {
+_ol_render_Feature_.prototype.get = function(key) {
   return this.properties_[key];
 };
 
@@ -71,7 +68,7 @@ ol.render.Feature.prototype.get = function(key) {
 /**
  * @return {Array.<number>|Array.<Array.<number>>} Ends or endss.
  */
-ol.render.Feature.prototype.getEnds = function() {
+_ol_render_Feature_.prototype.getEnds = function() {
   return this.ends_;
 };
 
@@ -81,11 +78,11 @@ ol.render.Feature.prototype.getEnds = function() {
  * @return {ol.Extent} Extent.
  * @api
  */
-ol.render.Feature.prototype.getExtent = function() {
+_ol_render_Feature_.prototype.getExtent = function() {
   if (!this.extent_) {
-    this.extent_ = this.type_ === ol.geom.GeometryType.POINT ?
-      ol.extent.createOrUpdateFromCoordinate(this.flatCoordinates_) :
-      ol.extent.createOrUpdateFromFlatCoordinates(
+    this.extent_ = this.type_ === _ol_geom_GeometryType_.POINT ?
+      _ol_extent_.createOrUpdateFromCoordinate(this.flatCoordinates_) :
+      _ol_extent_.createOrUpdateFromFlatCoordinates(
           this.flatCoordinates_, 0, this.flatCoordinates_.length, 2);
 
   }
@@ -98,7 +95,7 @@ ol.render.Feature.prototype.getExtent = function() {
  * @return {number|string|undefined} Id.
  * @api
  */
-ol.render.Feature.prototype.getId = function() {
+_ol_render_Feature_.prototype.getId = function() {
   return this.id_;
 };
 
@@ -106,7 +103,7 @@ ol.render.Feature.prototype.getId = function() {
 /**
  * @return {Array.<number>} Flat coordinates.
  */
-ol.render.Feature.prototype.getOrientedFlatCoordinates = function() {
+_ol_render_Feature_.prototype.getOrientedFlatCoordinates = function() {
   return this.flatCoordinates_;
 };
 
@@ -114,8 +111,8 @@ ol.render.Feature.prototype.getOrientedFlatCoordinates = function() {
 /**
  * @return {Array.<number>} Flat coordinates.
  */
-ol.render.Feature.prototype.getFlatCoordinates =
-    ol.render.Feature.prototype.getOrientedFlatCoordinates;
+_ol_render_Feature_.prototype.getFlatCoordinates =
+    _ol_render_Feature_.prototype.getOrientedFlatCoordinates;
 
 
 /**
@@ -124,7 +121,7 @@ ol.render.Feature.prototype.getFlatCoordinates =
  * @return {ol.render.Feature} Feature.
  * @api
  */
-ol.render.Feature.prototype.getGeometry = function() {
+_ol_render_Feature_.prototype.getGeometry = function() {
   return this;
 };
 
@@ -134,7 +131,7 @@ ol.render.Feature.prototype.getGeometry = function() {
  * @return {Object.<string, *>} Feature properties.
  * @api
  */
-ol.render.Feature.prototype.getProperties = function() {
+_ol_render_Feature_.prototype.getProperties = function() {
   return this.properties_;
 };
 
@@ -143,14 +140,14 @@ ol.render.Feature.prototype.getProperties = function() {
  * Get the feature for working with its geometry.
  * @return {ol.render.Feature} Feature.
  */
-ol.render.Feature.prototype.getSimplifiedGeometry =
-    ol.render.Feature.prototype.getGeometry;
+_ol_render_Feature_.prototype.getSimplifiedGeometry =
+    _ol_render_Feature_.prototype.getGeometry;
 
 
 /**
  * @return {number} Stride.
  */
-ol.render.Feature.prototype.getStride = function() {
+_ol_render_Feature_.prototype.getStride = function() {
   return 2;
 };
 
@@ -158,7 +155,7 @@ ol.render.Feature.prototype.getStride = function() {
 /**
  * @return {undefined}
  */
-ol.render.Feature.prototype.getStyleFunction = ol.nullFunction;
+_ol_render_Feature_.prototype.getStyleFunction = _ol_.nullFunction;
 
 
 /**
@@ -166,6 +163,7 @@ ol.render.Feature.prototype.getStyleFunction = ol.nullFunction;
  * @return {ol.geom.GeometryType} Geometry type.
  * @api
  */
-ol.render.Feature.prototype.getType = function() {
+_ol_render_Feature_.prototype.getType = function() {
   return this.type_;
 };
+export default _ol_render_Feature_;

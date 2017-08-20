@@ -1,7 +1,7 @@
-goog.require('ol.array');
-goog.require('ol.has');
-goog.require('ol.renderer.canvas.Map');
-goog.require('ol.renderer.webgl.Map');
+import _ol_array_ from '../src/ol/array';
+import _ol_has_ from '../src/ol/has';
+import _ol_renderer_canvas_Map_ from '../src/ol/renderer/canvas/map';
+import _ol_renderer_webgl_Map_ from '../src/ol/renderer/webgl/map';
 
 // FIXME remove afterLoadXml as it uses the wrong XML parser on IE9
 
@@ -320,7 +320,7 @@ goog.require('ol.renderer.webgl.Map');
    */
   expect.Assertion.prototype.arreql = function(obj) {
     this.assert(
-        ol.array.equals(this.obj, obj),
+        _ol_array_.equals(this.obj, obj),
         function() {
           return 'expected ' + expect.stringify(this.obj) +
               ' to sort of equal ' + expect.stringify(obj);
@@ -380,7 +380,7 @@ goog.require('ol.renderer.webgl.Map');
   };
 
   global.assertWebGL = function(map) {
-    if (!ol.has.WEBGL) {
+    if (!_ol_has_.WEBGL) {
       expect().fail('No WebGL support!');
     }
   };
@@ -470,9 +470,9 @@ goog.require('ol.renderer.webgl.Map');
    * @param {function} done A callback to indicate that the test is done.
    */
   global.expectResemble = function(map, referenceImage, tolerance, done) {
-    if (map.getRenderer() instanceof ol.renderer.canvas.Map) {
+    if (map.getRenderer() instanceof _ol_renderer_canvas_Map_) {
       expectResembleCanvas(map, referenceImage, tolerance, done);
-    } else if (map.getRenderer() instanceof ol.renderer.webgl.Map) {
+    } else if (map.getRenderer() instanceof _ol_renderer_webgl_Map_) {
       expectResembleWebGL(map, referenceImage, tolerance, done);
     } else {
       expect().fail(

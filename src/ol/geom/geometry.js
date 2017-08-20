@@ -1,11 +1,8 @@
-goog.provide('ol.geom.Geometry');
-
-goog.require('ol');
-goog.require('ol.Object');
-goog.require('ol.extent');
-goog.require('ol.functions');
-goog.require('ol.proj');
-
+import _ol_ from '../index';
+import _ol_Object_ from '../object';
+import _ol_extent_ from '../extent';
+import _ol_functions_ from '../functions';
+import _ol_proj_ from '../proj';
 
 /**
  * @classdesc
@@ -21,15 +18,15 @@ goog.require('ol.proj');
  * @extends {ol.Object}
  * @api
  */
-ol.geom.Geometry = function() {
+var _ol_geom_Geometry_ = function() {
 
-  ol.Object.call(this);
+  _ol_Object_.call(this);
 
   /**
    * @private
    * @type {ol.Extent}
    */
-  this.extent_ = ol.extent.createEmpty();
+  this.extent_ = _ol_extent_.createEmpty();
 
   /**
    * @private
@@ -56,7 +53,8 @@ ol.geom.Geometry = function() {
   this.simplifiedGeometryRevision = 0;
 
 };
-ol.inherits(ol.geom.Geometry, ol.Object);
+
+_ol_.inherits(_ol_geom_Geometry_, _ol_Object_);
 
 
 /**
@@ -64,7 +62,7 @@ ol.inherits(ol.geom.Geometry, ol.Object);
  * @abstract
  * @return {!ol.geom.Geometry} Clone.
  */
-ol.geom.Geometry.prototype.clone = function() {};
+_ol_geom_Geometry_.prototype.clone = function() {};
 
 
 /**
@@ -75,7 +73,7 @@ ol.geom.Geometry.prototype.clone = function() {};
  * @param {number} minSquaredDistance Minimum squared distance.
  * @return {number} Minimum squared distance.
  */
-ol.geom.Geometry.prototype.closestPointXY = function(x, y, closestPoint, minSquaredDistance) {};
+_ol_geom_Geometry_.prototype.closestPointXY = function(x, y, closestPoint, minSquaredDistance) {};
 
 
 /**
@@ -86,7 +84,7 @@ ol.geom.Geometry.prototype.closestPointXY = function(x, y, closestPoint, minSqua
  * @return {ol.Coordinate} Closest point.
  * @api
  */
-ol.geom.Geometry.prototype.getClosestPoint = function(point, opt_closestPoint) {
+_ol_geom_Geometry_.prototype.getClosestPoint = function(point, opt_closestPoint) {
   var closestPoint = opt_closestPoint ? opt_closestPoint : [NaN, NaN];
   this.closestPointXY(point[0], point[1], closestPoint, Infinity);
   return closestPoint;
@@ -100,7 +98,7 @@ ol.geom.Geometry.prototype.getClosestPoint = function(point, opt_closestPoint) {
  * @return {boolean} Contains coordinate.
  * @api
  */
-ol.geom.Geometry.prototype.intersectsCoordinate = function(coordinate) {
+_ol_geom_Geometry_.prototype.intersectsCoordinate = function(coordinate) {
   return this.containsXY(coordinate[0], coordinate[1]);
 };
 
@@ -111,7 +109,7 @@ ol.geom.Geometry.prototype.intersectsCoordinate = function(coordinate) {
  * @protected
  * @return {ol.Extent} extent Extent.
  */
-ol.geom.Geometry.prototype.computeExtent = function(extent) {};
+_ol_geom_Geometry_.prototype.computeExtent = function(extent) {};
 
 
 /**
@@ -119,7 +117,7 @@ ol.geom.Geometry.prototype.computeExtent = function(extent) {};
  * @param {number} y Y.
  * @return {boolean} Contains (x, y).
  */
-ol.geom.Geometry.prototype.containsXY = ol.functions.FALSE;
+_ol_geom_Geometry_.prototype.containsXY = _ol_functions_.FALSE;
 
 
 /**
@@ -128,12 +126,12 @@ ol.geom.Geometry.prototype.containsXY = ol.functions.FALSE;
  * @return {ol.Extent} extent Extent.
  * @api
  */
-ol.geom.Geometry.prototype.getExtent = function(opt_extent) {
+_ol_geom_Geometry_.prototype.getExtent = function(opt_extent) {
   if (this.extentRevision_ != this.getRevision()) {
     this.extent_ = this.computeExtent(this.extent_);
     this.extentRevision_ = this.getRevision();
   }
-  return ol.extent.returnOrUpdate(this.extent_, opt_extent);
+  return _ol_extent_.returnOrUpdate(this.extent_, opt_extent);
 };
 
 
@@ -145,7 +143,7 @@ ol.geom.Geometry.prototype.getExtent = function(opt_extent) {
  * @param {ol.Coordinate} anchor The rotation center.
  * @api
  */
-ol.geom.Geometry.prototype.rotate = function(angle, anchor) {};
+_ol_geom_Geometry_.prototype.rotate = function(angle, anchor) {};
 
 
 /**
@@ -159,7 +157,7 @@ ol.geom.Geometry.prototype.rotate = function(angle, anchor) {};
  *     of the geometry extent).
  * @api
  */
-ol.geom.Geometry.prototype.scale = function(sx, opt_sy, opt_anchor) {};
+_ol_geom_Geometry_.prototype.scale = function(sx, opt_sy, opt_anchor) {};
 
 
 /**
@@ -174,7 +172,7 @@ ol.geom.Geometry.prototype.scale = function(sx, opt_sy, opt_anchor) {};
  *     geometry.
  * @api
  */
-ol.geom.Geometry.prototype.simplify = function(tolerance) {
+_ol_geom_Geometry_.prototype.simplify = function(tolerance) {
   return this.getSimplifiedGeometry(tolerance * tolerance);
 };
 
@@ -187,7 +185,7 @@ ol.geom.Geometry.prototype.simplify = function(tolerance) {
  * @param {number} squaredTolerance Squared tolerance.
  * @return {ol.geom.Geometry} Simplified geometry.
  */
-ol.geom.Geometry.prototype.getSimplifiedGeometry = function(squaredTolerance) {};
+_ol_geom_Geometry_.prototype.getSimplifiedGeometry = function(squaredTolerance) {};
 
 
 /**
@@ -195,7 +193,7 @@ ol.geom.Geometry.prototype.getSimplifiedGeometry = function(squaredTolerance) {}
  * @abstract
  * @return {ol.geom.GeometryType} Geometry type.
  */
-ol.geom.Geometry.prototype.getType = function() {};
+_ol_geom_Geometry_.prototype.getType = function() {};
 
 
 /**
@@ -206,7 +204,7 @@ ol.geom.Geometry.prototype.getType = function() {};
  * @abstract
  * @param {ol.TransformFunction} transformFn Transform.
  */
-ol.geom.Geometry.prototype.applyTransform = function(transformFn) {};
+_ol_geom_Geometry_.prototype.applyTransform = function(transformFn) {};
 
 
 /**
@@ -215,7 +213,7 @@ ol.geom.Geometry.prototype.applyTransform = function(transformFn) {};
  * @param {ol.Extent} extent Extent.
  * @return {boolean} `true` if the geometry and the extent intersect.
  */
-ol.geom.Geometry.prototype.intersectsExtent = function(extent) {};
+_ol_geom_Geometry_.prototype.intersectsExtent = function(extent) {};
 
 
 /**
@@ -225,7 +223,7 @@ ol.geom.Geometry.prototype.intersectsExtent = function(extent) {};
  * @param {number} deltaX Delta X.
  * @param {number} deltaY Delta Y.
  */
-ol.geom.Geometry.prototype.translate = function(deltaX, deltaY) {};
+_ol_geom_Geometry_.prototype.translate = function(deltaX, deltaY) {};
 
 
 /**
@@ -243,7 +241,8 @@ ol.geom.Geometry.prototype.translate = function(deltaX, deltaY) {};
  *     modified in place.
  * @api
  */
-ol.geom.Geometry.prototype.transform = function(source, destination) {
-  this.applyTransform(ol.proj.getTransform(source, destination));
+_ol_geom_Geometry_.prototype.transform = function(source, destination) {
+  this.applyTransform(_ol_proj_.getTransform(source, destination));
   return this;
 };
+export default _ol_geom_Geometry_;
