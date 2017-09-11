@@ -137,7 +137,7 @@ ol.source.UrlTile.prototype.getUrls = function() {
  */
 ol.source.UrlTile.prototype.handleTileChange = function(event) {
   var tile = /** @type {ol.Tile} */ (event.target);
-  var uid = ol.getUid(tile);
+  var uid = goog.getUid(tile);
   var tileState = tile.getState();
   var type;
   if (tileState == ol.TileState.LOADING) {
@@ -150,7 +150,7 @@ ol.source.UrlTile.prototype.handleTileChange = function(event) {
         ol.source.TileEventType.TILELOADEND : undefined;
   }
   if (type != undefined) {
-    this.dispatchEvent(new ol.source.Tile.Event(type, tile));
+    this.dispatchEvent(new ol.source.TileEvent(type, tile));
   }
 };
 
