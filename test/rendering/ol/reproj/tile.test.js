@@ -49,12 +49,6 @@ describe('ol.rendering.reproj.Tile', function() {
         'rendering/ol/data/tiles/osm/5/5/12.png', 1, done);
     });
 
-    it('to EPSG:4326', function(done) {
-      const tileGrid = createForProjection('EPSG:4326', 7, [64, 64]);
-      testSingleTile(source, 'EPSG:4326', tileGrid, 7, 21, -20, 1,
-        'rendering/ol/reproj/expected/osm4326.png', 1, done);
-    });
-
     it('to EPSG:5070', function(done) {
       proj4.defs('EPSG:5070',
         '+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 ' +
@@ -87,12 +81,6 @@ describe('ol.rendering.reproj.Tile', function() {
         projection: 'EPSG:3857',
         url: 'rendering/ol/data/tiles/osm/{z}/{x}/{y}.png'
       });
-    });
-
-    it('to EPSG:4326', function(done) {
-      const tileGrid = createForProjection('EPSG:4326', 7, [64, 64]);
-      testSingleTile(source, 'EPSG:4326', tileGrid, 7, 23, -21, 1,
-        'rendering/ol/reproj/expected/stitch-osm4326.png', 2, done);
     });
 
     it('to EPSG:3740', function(done) {
