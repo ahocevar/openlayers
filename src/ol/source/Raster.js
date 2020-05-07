@@ -11,6 +11,8 @@ import SourceState from './State.js';
 import TileLayer from '../layer/Tile.js';
 import TileQueue from '../TileQueue.js';
 import TileSource from './Tile.js';
+import VectorImageLayer from '../layer/VectorImage.js';
+import VectorSource from './Vector.js';
 import {Processor} from 'pixelworks/lib/index.js';
 import {assign} from '../obj.js';
 import {createCanvasContext2D} from '../dom.js';
@@ -536,6 +538,8 @@ function createLayer(layerOrSource) {
       layer = new TileLayer({source: layerOrSource});
     } else if (layerOrSource instanceof ImageSource) {
       layer = new ImageLayer({source: layerOrSource});
+    } else if (layerOrSource instanceof VectorSource) {
+      layer = new VectorImageLayer({source: layerOrSource});
     }
   } else {
     layer = layerOrSource;
