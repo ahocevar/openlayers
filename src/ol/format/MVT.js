@@ -194,12 +194,7 @@ class MVT extends FeatureFormat {
         values,
         id
       );
-      if (
-        options.featureProjection &&
-        options.dataProjection !== options.featureProjection
-      ) {
-        feature.transform(options.dataProjection, options.featureProjection);
-      }
+      feature.transform(options.dataProjection);
     } else {
       let geom;
       if (geometryType == GeometryType.POLYGON) {
