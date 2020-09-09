@@ -194,7 +194,12 @@ class MVT extends FeatureFormat {
         values,
         id
       );
-      feature.transform(options.dataProjection, options.featureProjection);
+      if (
+        options.featureProjection &&
+        options.dataProjection !== options.featureProjection
+      ) {
+        feature.transform(options.dataProjection, options.featureProjection);
+      }
     } else {
       let geom;
       if (geometryType == GeometryType.POLYGON) {
@@ -272,6 +277,7 @@ class MVT extends FeatureFormat {
     const dataProjection = get(options.dataProjection);
     dataProjection.setWorldExtent(options.extent);
     options.dataProjection = dataProjection;
+    options.featureProjection = get(options.featureProjection);
 
     const pbf = new PBF(/** @type {ArrayBuffer} */ (source));
     const pbfLayers = pbf.readFields(layersPBFReader, {});
