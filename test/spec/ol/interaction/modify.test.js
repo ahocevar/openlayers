@@ -911,8 +911,8 @@ describe('ol.interaction.Modify', function () {
     });
   });
 
-  describe('#setActive', function () {
-    it('removes the vertexFeature of deactivation', function () {
+  describe('Vertex feature', function () {
+    it('tracks features and removes the vertexFeature on deactivation', function () {
       const modify = new Modify({
         features: new Collection(features),
       });
@@ -921,6 +921,7 @@ describe('ol.interaction.Modify', function () {
 
       simulateEvent('pointermove', 10, -20, null, 0);
       expect(modify.vertexFeature_).to.not.be(null);
+      expect(modify.vertexFeature_.get('features').length).to.be(1);
 
       modify.setActive(false);
       expect(modify.vertexFeature_).to.be(null);
