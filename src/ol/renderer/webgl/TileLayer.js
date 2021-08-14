@@ -35,6 +35,10 @@ export const Uniforms = {
   TILE_TRANSFORM: 'u_tileTransform',
   TRANSITION_ALPHA: 'u_transitionAlpha',
   DEPTH: 'u_depth',
+  PIXEL_SIZE_X: 'u_pixelSizeX',
+  PIXEL_SIZE_Y: 'u_pixelSizeY',
+  RESOLUTION: 'u_resolution',
+  ZOOM: 'u_zoom',
 };
 
 export const Attributes = {
@@ -421,6 +425,13 @@ class WebGLTileLayerRenderer extends WebGLLayerRenderer {
 
         this.helper.setUniformFloatValue(Uniforms.TRANSITION_ALPHA, alpha);
         this.helper.setUniformFloatValue(Uniforms.DEPTH, depth);
+        this.helper.setUniformFloatValue(Uniforms.PIXEL_SIZE_X, tileSize[0]);
+        this.helper.setUniformFloatValue(Uniforms.PIXEL_SIZE_Y, tileSize[1]);
+        this.helper.setUniformFloatValue(
+          Uniforms.RESOLUTION,
+          viewState.resolution
+        );
+        this.helper.setUniformFloatValue(Uniforms.ZOOM, viewState.zoom);
 
         this.helper.drawElements(0, this.indices_.getSize());
       }
