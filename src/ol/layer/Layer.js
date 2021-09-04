@@ -5,7 +5,6 @@ import BaseLayer from './Base.js';
 import EventType from '../events/EventType.js';
 import LayerProperty from './Property.js';
 import RenderEventType from '../render/EventType.js';
-import SourceState from '../source/State.js';
 import {assert} from '../asserts.js';
 import {assign} from '../obj.js';
 import {listen, unlistenByKey} from '../events.js';
@@ -57,7 +56,7 @@ import {listen, unlistenByKey} from '../events.js';
  * @typedef {Object} State
  * @property {import("./Layer.js").default} layer Layer.
  * @property {number} opacity Opacity, the value is rounded to two digits to appear after the decimal point.
- * @property {import("../source/State.js").default} sourceState SourceState.
+ * @property {import("../source/Source.js").State} sourceState SourceState.
  * @property {boolean} visible Visible.
  * @property {boolean} managed Managed.
  * @property {import("../extent.js").Extent} [extent] Extent.
@@ -196,11 +195,11 @@ class Layer extends BaseLayer {
   }
 
   /**
-   * @return {import("../source/State.js").default} Source state.
+   * @return {import("../source/Source.js").State} Source state.
    */
   getSourceState() {
     const source = this.getSource();
-    return !source ? SourceState.UNDEFINED : source.getState();
+    return !source ? 'undefined' : source.getState();
   }
 
   /**

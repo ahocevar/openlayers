@@ -238,7 +238,7 @@ class BaseLayer extends BaseObject {
 
   /**
    * @abstract
-   * @return {import("../source/State.js").default} Source state.
+   * @return {import("../source/Source.js").State} Source state.
    */
   getSourceState() {
     return abstract();

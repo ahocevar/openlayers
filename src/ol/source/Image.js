@@ -79,7 +79,7 @@ export class ImageSourceEvent extends Event {
  * @property {boolean} [imageSmoothing=true] Enable image smoothing.
  * @property {import("../proj.js").ProjectionLike} [projection] Projection.
  * @property {Array<number>} [resolutions] Resolutions.
- * @property {import("./State.js").default} [state] State.
+ * @property {import("./Source.js").State} [state] State.
  */
 
 /**

@@ -6,7 +6,6 @@ import Collection from '../Collection.js';
 import CollectionEventType from '../CollectionEventType.js';
 import EventType from '../events/EventType.js';
 import ObjectEventType from '../ObjectEventType.js';
-import SourceState from '../source/State.js';
 import {assert} from '../asserts.js';
 import {assign, clear} from '../obj.js';
 import {getIntersection} from '../extent.js';
@@ -283,10 +282,10 @@ class LayerGroup extends BaseLayer {
   }
 
   /**
-   * @return {import("../source/State.js").default} Source state.
+   * @return {import("../source/Source.js").State} Source state.
    */
   getSourceState() {
-    return SourceState.READY;
+    return 'ready';
   }
 }
 

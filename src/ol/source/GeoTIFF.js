@@ -2,7 +2,6 @@
  * @module ol/source/GeoTIFF
  */
 import DataTile from './DataTile.js';
-import State from './State.js';
 import TileGrid from '../tilegrid/TileGrid.js';
 import {Pool, fromUrl as tiffFromUrl, fromUrls as tiffFromUrls} from 'geotiff';
 import {create as createDecoderWorker} from '../worker/geotiff-decoder.js';
@@ -163,7 +162,7 @@ class GeoTIFFSource extends DataTile {
    */
   constructor(options) {
     super({
-      state: State.LOADING,
+      state: 'loading',
       tileGrid: null,
       projection: null,
       opaque: options.opaque,
@@ -227,7 +226,7 @@ class GeoTIFFSource extends DataTile {
       })
       .catch(function (error) {
         self.error_ = error;
-        self.setState(State.ERROR);
+        self.setState('error');
       });
   }
 
@@ -420,7 +419,7 @@ class GeoTIFFSource extends DataTile {
     this.tileGrid = tileGrid;
 
     this.setLoader(this.loadTile_.bind(this));
-    this.setState(State.READY);
+    this.setState('ready');
   }
 
   loadTile_(z, x, y) {

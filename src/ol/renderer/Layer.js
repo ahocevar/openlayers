@@ -4,7 +4,6 @@
 import EventType from '../events/EventType.js';
 import ImageState from '../ImageState.js';
 import Observable from '../Observable.js';
-import SourceState from '../source/State.js';
 import {abstract} from '../util.js';
 
 /**
@@ -182,7 +181,7 @@ class LayerRenderer extends Observable {
    */
   renderIfReadyAndVisible() {
     const layer = this.getLayer();
-    if (layer.getVisible() && layer.getSourceState() == SourceState.READY) {
+    if (layer.getVisible() && layer.getSourceState() == 'ready') {
       layer.changed();
     }
   }
