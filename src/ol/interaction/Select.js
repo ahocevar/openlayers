@@ -4,7 +4,6 @@
 import Collection from '../Collection.js';
 import CollectionEventType from '../CollectionEventType.js';
 import Event from '../events/Event.js';
-import GeometryType from '../geom/GeometryType.js';
 import Interaction from './Interaction.js';
 import {TRUE} from '../functions.js';
 import {clear} from '../obj.js';
@@ -554,11 +553,8 @@ class Select extends Interaction {
  */
 function getDefaultStyleFunction() {
   const styles = createEditingStyle();
-  extend(styles[GeometryType.POLYGON], styles[GeometryType.LINE_STRING]);
-  extend(
-    styles[GeometryType.GEOMETRY_COLLECTION],
-    styles[GeometryType.LINE_STRING]
-  );
+  extend(styles['Polygon'], styles['LineString']);
+  extend(styles['GeometryCollection'], styles['LineString']);
 
   return function (feature) {
     if (!feature.getGeometry()) {

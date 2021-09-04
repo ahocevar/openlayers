@@ -1,7 +1,6 @@
 /**
  * @module ol/render/Feature
  */
-import GeometryType from '../geom/GeometryType.js';
 import {
   compose as composeTransform,
   create as createTransform,
@@ -34,7 +33,7 @@ const tmpTransform = createTransform();
  */
 class RenderFeature {
   /**
-   * @param {import("../geom/GeometryType.js").default} type Geometry type.
+   * @param {import("../geom/Geometry.js").Type} type Geometry type.
    * @param {Array<number>} flatCoordinates Flat coordinates. These always need
    *     to be right-handed for polygons.
    * @param {Array<number>|Array<Array<number>>} ends Ends or Endss.
@@ -56,7 +55,7 @@ class RenderFeature {
 
     /**
      * @private
-     * @type {import("../geom/GeometryType.js").default}
+     * @type {import("../geom/Geometry.js").Type}
      */
     this.type_ = type;
 
@@ -109,7 +108,7 @@ class RenderFeature {
   getExtent() {
     if (!this.extent_) {
       this.extent_ =
-        this.type_ === GeometryType.POINT
+        this.type_ === 'Point'
           ? createOrUpdateFromCoordinate(this.flatCoordinates_)
           : createOrUpdateFromFlatCoordinates(
               this.flatCoordinates_,
@@ -267,7 +266,7 @@ class RenderFeature {
 
   /**
    * Get the type of this feature's geometry.
-   * @return {import("../geom/GeometryType.js").default} Geometry type.
+   * @return {import("../geom/Geometry.js").Type} Geometry type.
    * @api
    */
   getType() {

@@ -3,7 +3,6 @@
  */
 import CollectionEventType from '../CollectionEventType.js';
 import EventType from '../events/EventType.js';
-import GeometryType from '../geom/GeometryType.js';
 import PointerInteraction from './Pointer.js';
 import RBush from '../structs/RBush.js';
 import VectorEventType from '../source/VectorEventType.js';
@@ -429,7 +428,7 @@ class Snap extends PointerInteraction {
     // If snapping on vertices only, don't consider circles
     if (this.vertex_ && !this.edge_) {
       segments = segments.filter(function (segment) {
-        return segment.feature.getGeometry().getType() !== GeometryType.CIRCLE;
+        return segment.feature.getGeometry().getType() !== 'Circle';
       });
     }
 
@@ -476,8 +475,7 @@ class Snap extends PointerInteraction {
       }
     } else if (this.edge_) {
       const isCircle =
-        closestSegmentData.feature.getGeometry().getType() ===
-        GeometryType.CIRCLE;
+        closestSegmentData.feature.getGeometry().getType() === 'Circle';
       if (isCircle) {
         let circleGeometry = closestSegmentData.feature.getGeometry();
         const userProjection = getUserProjection();

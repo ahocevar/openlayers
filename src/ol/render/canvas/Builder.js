@@ -2,7 +2,6 @@
  * @module ol/render/canvas/Builder
  */
 import CanvasInstruction from './Instruction.js';
-import GeometryType from '../../geom/GeometryType.js';
 import Relationship from '../../extent/Relationship.js';
 import VectorContext from '../VectorContext.js';
 import {asColorLike} from '../../colorlike.js';
@@ -255,7 +254,7 @@ class CanvasBuilder extends VectorContext {
     const builderBegin = this.coordinates.length;
     let flatCoordinates, builderEnd, builderEnds, builderEndss;
     let offset;
-    if (type == GeometryType.MULTI_POLYGON) {
+    if (type == 'MultiPolygon') {
       flatCoordinates =
         /** @type {import("../../geom/MultiPolygon.js").default} */ (
           geometry
@@ -285,13 +284,10 @@ class CanvasBuilder extends VectorContext {
         renderer,
         inflateMultiCoordinatesArray,
       ]);
-    } else if (
-      type == GeometryType.POLYGON ||
-      type == GeometryType.MULTI_LINE_STRING
-    ) {
+    } else if (type == 'Polygon' || type == 'MultiLineString') {
       builderEnds = [];
       flatCoordinates =
-        type == GeometryType.POLYGON
+        type == 'Polygon'
           ? /** @type {import("../../geom/Polygon.js").default} */ (
               geometry
             ).getOrientedFlatCoordinates()
@@ -313,10 +309,7 @@ class CanvasBuilder extends VectorContext {
         renderer,
         inflateCoordinatesArray,
       ]);
-    } else if (
-      type == GeometryType.LINE_STRING ||
-      type == GeometryType.CIRCLE
-    ) {
+    } else if (type == 'LineString' || type == 'Circle') {
       flatCoordinates = geometry.getFlatCoordinates();
       builderEnd = this.appendFlatLineCoordinates(
         flatCoordinates,
@@ -334,7 +327,7 @@ class CanvasBuilder extends VectorContext {
         renderer,
         inflateCoordinates,
       ]);
-    } else if (type == GeometryType.MULTI_POINT) {
+    } else if (type == 'MultiPoint') {
       flatCoordinates = geometry.getFlatCoordinates();
       builderEnd = this.appendFlatPointCoordinates(flatCoordinates, stride);
       if (builderEnd > builderBegin) {
@@ -347,7 +340,7 @@ class CanvasBuilder extends VectorContext {
           inflateCoordinates,
         ]);
       }
-    } else if (type == GeometryType.POINT) {
+    } else if (type == 'Point') {
       flatCoordinates = geometry.getFlatCoordinates();
       this.coordinates.push(flatCoordinates[0], flatCoordinates[1]);
       builderEnd = this.coordinates.length;

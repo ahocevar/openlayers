@@ -6,7 +6,6 @@ import CollectionEventType from '../CollectionEventType.js';
 import Event from '../events/Event.js';
 import EventType from '../events/EventType.js';
 import Feature from '../Feature.js';
-import GeometryType from '../geom/GeometryType.js';
 import MapBrowserEventType from '../MapBrowserEventType.js';
 import Point from '../geom/Point.js';
 import PointerInteraction from './Pointer.js';
@@ -905,38 +904,38 @@ class Modify extends PointerInteraction {
       }
 
       switch (geometry.getType()) {
-        case GeometryType.POINT:
+        case 'Point':
           coordinates = vertex;
           segment[0] = vertex;
           segment[1] = vertex;
           break;
-        case GeometryType.MULTI_POINT:
+        case 'MultiPoint':
           coordinates = geometry.getCoordinates();
           coordinates[segmentData.index] = vertex;
           segment[0] = vertex;
           segment[1] = vertex;
           break;
-        case GeometryType.LINE_STRING:
+        case 'LineString':
           coordinates = geometry.getCoordinates();
           coordinates[segmentData.index + index] = vertex;
           segment[index] = vertex;
           break;
-        case GeometryType.MULTI_LINE_STRING:
+        case 'MultiLineString':
           coordinates = geometry.getCoordinates();
           coordinates[depth[0]][segmentData.index + index] = vertex;
           segment[index] = vertex;
           break;
-        case GeometryType.POLYGON:
+        case 'Polygon':
           coordinates = geometry.getCoordinates();
           coordinates[depth[0]][segmentData.index + index] = vertex;
           segment[index] = vertex;
           break;
-        case GeometryType.MULTI_POLYGON:
+        case 'MultiPolygon':
           coordinates = geometry.getCoordinates();
           coordinates[depth[1]][depth[0]][segmentData.index + index] = vertex;
           segment[index] = vertex;
           break;
-        case GeometryType.CIRCLE:
+        case 'Circle':
           segment[0] = vertex;
           segment[1] = vertex;
           if (segmentData.index === CIRCLE_CENTER_INDEX) {
@@ -1011,7 +1010,7 @@ class Modify extends PointerInteraction {
         }
 
         if (
-          segmentDataMatch.geometry.getType() === GeometryType.CIRCLE &&
+          segmentDataMatch.geometry.getType() === 'Circle' &&
           segmentDataMatch.index === CIRCLE_CIRCUMFERENCE_INDEX
         ) {
           const closestVertex = closestOnSegmentData(
@@ -1044,9 +1043,8 @@ class Modify extends PointerInteraction {
         ) {
           // prevent dragging closed linestrings by the connecting node
           if (
-            (segmentDataMatch.geometry.getType() === GeometryType.LINE_STRING ||
-              segmentDataMatch.geometry.getType() ===
-                GeometryType.MULTI_LINE_STRING) &&
+            (segmentDataMatch.geometry.getType() === 'LineString' ||
+              segmentDataMatch.geometry.getType() === 'MultiLineString') &&
             componentSegments[uid][0] &&
             componentSegments[uid][0].index === 0
           ) {
@@ -1088,7 +1086,7 @@ class Modify extends PointerInteraction {
     for (let i = this.dragSegments_.length - 1; i >= 0; --i) {
       const segmentData = this.dragSegments_[i][0];
       const geometry = segmentData.geometry;
-      if (geometry.getType() === GeometryType.CIRCLE) {
+      if (geometry.getType() === 'Circle') {
         // Update a circle object in the R* bush:
         const coordinates = geometry.getCenter();
         const centerSegmentData = segmentData.featureSegments[0];
@@ -1173,7 +1171,7 @@ class Modify extends PointerInteraction {
               feature.getGeometry()
             );
           if (
-            geometry.getType() === GeometryType.POINT &&
+            geometry.getType() === 'Point' &&
             includes(this.features_.getArray(), feature)
           ) {
             hitPointGeometry = geometry;
@@ -1220,7 +1218,7 @@ class Modify extends PointerInteraction {
           this.delta_[1] = vertex[1] - pixelCoordinate[1];
         }
         if (
-          node.geometry.getType() === GeometryType.CIRCLE &&
+          node.geometry.getType() === 'Circle' &&
           node.index === CIRCLE_CIRCUMFERENCE_INDEX
         ) {
           this.snappedToVertex_ = true;
@@ -1296,19 +1294,19 @@ class Modify extends PointerInteraction {
     }
 
     switch (geometry.getType()) {
-      case GeometryType.MULTI_LINE_STRING:
+      case 'MultiLineString':
         coordinates = geometry.getCoordinates();
         coordinates[depth[0]].splice(index + 1, 0, vertex);
         break;
-      case GeometryType.POLYGON:
+      case 'Polygon':
         coordinates = geometry.getCoordinates();
         coordinates[depth[0]].splice(index + 1, 0, vertex);
         break;
-      case GeometryType.MULTI_POLYGON:
+      case 'MultiPolygon':
         coordinates = geometry.getCoordinates();
         coordinates[depth[1]][depth[0]].splice(index + 1, 0, vertex);
         break;
-      case GeometryType.LINE_STRING:
+      case 'LineString':
         coordinates = geometry.getCoordinates();
         coordinates.splice(index + 1, 0, vertex);
         break;
@@ -1421,22 +1419,22 @@ class Modify extends PointerInteraction {
       component = coordinates;
       deleted = false;
       switch (geometry.getType()) {
-        case GeometryType.MULTI_LINE_STRING:
+        case 'MultiLineString':
           if (coordinates[segmentData.depth[0]].length > 2) {
             coordinates[segmentData.depth[0]].splice(index, 1);
             deleted = true;
           }
           break;
-        case GeometryType.LINE_STRING:
+        case 'LineString':
           if (coordinates.length > 2) {
             coordinates.splice(index, 1);
             deleted = true;
           }
           break;
-        case GeometryType.MULTI_POLYGON:
+        case 'MultiPolygon':
           component = component[segmentData.depth[1]];
         /* falls through */
-        case GeometryType.POLYGON:
+        case 'Polygon':
           component = component[segmentData.depth[0]];
           if (component.length > 4) {
             if (index == component.length - 1) {
@@ -1555,7 +1553,7 @@ function projectedDistanceToSegmentDataSquared(
 ) {
   const geometry = segmentData.geometry;
 
-  if (geometry.getType() === GeometryType.CIRCLE) {
+  if (geometry.getType() === 'Circle') {
     let circleGeometry = /** @type {import("../geom/Circle.js").default} */ (
       geometry
     );
@@ -1597,7 +1595,7 @@ function closestOnSegmentData(pointCoordinates, segmentData, projection) {
   const geometry = segmentData.geometry;
 
   if (
-    geometry.getType() === GeometryType.CIRCLE &&
+    geometry.getType() === 'Circle' &&
     segmentData.index === CIRCLE_CIRCUMFERENCE_INDEX
   ) {
     let circleGeometry = /** @type {import("../geom/Circle.js").default} */ (
@@ -1631,7 +1629,7 @@ function closestOnSegmentData(pointCoordinates, segmentData, projection) {
 function getDefaultStyleFunction() {
   const style = createEditingStyle();
   return function (feature, resolution) {
-    return style[GeometryType.POINT];
+    return style['Point'];
   };
 }
 
