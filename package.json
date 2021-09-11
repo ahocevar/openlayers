@@ -1,6 +1,6 @@
 {
   "name": "ol",
-  "version": "6.6.2-dev",
+  "version": "6.7.1-dev",
   "description": "OpenLayers mapping library",
   "keywords": [
     "map",
@@ -23,7 +23,7 @@
     "build-package": "npm run transpile && npm run copy-css && npm run generate-types && node tasks/prepare-package.js",
     "build-index": "shx rm -f build/index.js && npm run build-package && node tasks/generate-index.js",
     "build-legacy": "shx rm -rf build/legacy && npm run build-index && webpack --config config/webpack-config-legacy-build.mjs && cleancss --source-map src/ol/ol.css -o build/legacy/ol.css",
-    "build-site": "shx rm -rf build/site && npm run build-examples && npm run apidoc && shx mkdir -p build/site && shx cp site/index.html build/site/ && shx mv build/apidoc build/examples build/site/",
+    "build-site": "shx rm -rf build/site && npm run build-examples && npm run apidoc && npm run build-legacy && shx mkdir -p build/site && shx cp site/index.html build/site/ && shx mv build/apidoc build/examples build/legacy build/site/",
     "copy-css": "shx cp src/ol/ol.css build/ol/ol.css",
     "generate-types": "npx --package=typescript@3.8.3 -y -- tsc --project config/tsconfig-build.json --declaration --declarationMap --emitDeclarationOnly --outdir build/ol",
     "transpile": "shx rm -rf build/ol && shx mkdir -p build/ol && shx cp -rf src/ol build/ol/src && node tasks/serialize-workers.cjs && npx --package=typescript@4.3.5 -y -- tsc --project config/tsconfig-build.json",
@@ -45,7 +45,7 @@
     "url": "https://opencollective.com/openlayers"
   },
   "dependencies": {
-    "geotiff": "^1.0.4",
+    "geotiff": "^1.0.5",
     "ol-mapbox-style": "^6.4.1",
     "pbf": "3.2.1",
     "rbush": "^3.0.1"
@@ -63,8 +63,6 @@
     "@types/pbf": "^3.0.2",
     "@types/topojson-specification": "^1.0.1",
     "babel-loader": "^8.2.2",
-    "buble": "^0.20.0",
-    "buble-loader": "^0.5.1",
     "chaikin-smooth": "^1.0.4",
     "clean-css-cli": "5.3.3",
     "copy-webpack-plugin": "^9.0.0",
@@ -93,8 +91,8 @@
     "karma-sourcemap-loader": "^0.3.8",
     "karma-webpack": "^5.0.0",
     "loglevelnext": "^5.0.5",
-    "marked": "3.0.0",
-    "mocha": "9.0.3",
+    "marked": "3.0.3",
+    "mocha": "9.1.1",
     "pixelmatch": "^5.1.0",
     "pngjs": "^6.0.0",
     "proj4": "^2.7.5",
