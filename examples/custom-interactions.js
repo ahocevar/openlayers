@@ -131,7 +131,7 @@ const polygonFeature = new Feature(
 );
 
 const key =
-  'pk.eyJ1IjoiYWhvY2V2YXIiLCJhIjoiY2pzbmg0Nmk5MGF5NzQzbzRnbDNoeHJrbiJ9.7_-_gL8ur7ZtEiNwRfCy7Q';
+  'pk.eyJ1IjoiYWhvY2V2YXIiLCJhIjoiY2t0Znl4aWJ2MGQxOTJ6cW5waWkwZWZ4ayJ9.Vgh43s6uPiHP5q3uhhLtng';
 
 const map = new Map({
   interactions: defaultInteractions().extend([new Drag()]),
