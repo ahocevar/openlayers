@@ -9,6 +9,7 @@ import CanvasInstruction, {
   strokeInstruction,
 } from './Instruction.js';
 import {defaultFillStyle} from '../canvas.js';
+import {isTransparent} from '../../colorlike.js';
 import {snap} from '../../geom/flat/simplify.js';
 
 class CanvasPolygonBuilder extends CanvasBuilder {
@@ -27,15 +28,19 @@ class CanvasPolygonBuilder extends CanvasBuilder {
    * @param {number} offset Offset.
    * @param {Array<number>} ends Ends.
    * @param {number} stride Stride.
-   * @private
    * @return {number} End.
+   * @private
    */
   drawFlatCoordinatess_(flatCoordinates, offset, ends, stride) {
     const state = this.state;
     const fill = state.fillStyle !== undefined;
     const stroke = state.strokeStyle !== undefined;
+    const fillTransparent = fill && isTransparent(state.fillStyle);
+    const strokeTransparent = stroke && isTransparent(state.strokeStyle);
     const numEnds = ends.length;
-    this.instructions.push(beginPathInstruction);
+    if (!fillTransparent || !strokeTransparent) {
+      this.instructions.push(beginPathInstruction);
+    }
     this.hitDetectionInstructions.push(beginPathInstruction);
     for (let i = 0; i < numEnds; ++i) {
       const end = ends[i];
@@ -53,22 +58,30 @@ class CanvasPolygonBuilder extends CanvasBuilder {
         myBegin,
         myEnd,
       ];
-      this.instructions.push(moveToLineToInstruction);
+      if (!fillTransparent || !strokeTransparent) {
+        this.instructions.push(moveToLineToInstruction);
+      }
       this.hitDetectionInstructions.push(moveToLineToInstruction);
       if (stroke) {
         // Performance optimization: only call closePath() when we have a stroke.
         // Otherwise the ring is closed already (see appendFlatLineCoordinates above).
-        this.instructions.push(closePathInstruction);
+        if (!strokeTransparent || !fillTransparent) {
+          this.instructions.push(closePathInstruction);
+        }
         this.hitDetectionInstructions.push(closePathInstruction);
       }
       offset = end;
     }
     if (fill) {
-      this.instructions.push(fillInstruction);
+      if (!fillTransparent) {
+        this.instructions.push(fillInstruction);
+      }
       this.hitDetectionInstructions.push(fillInstruction);
     }
     if (stroke) {
-      this.instructions.push(strokeInstruction);
+      if (!strokeTransparent) {
+        this.instructions.push(strokeInstruction);
+      }
       this.hitDetectionInstructions.push(strokeInstruction);
     }
     return offset;
@@ -141,8 +154,8 @@ class CanvasPolygonBuilder extends CanvasBuilder {
     if (fillStyle === undefined && strokeStyle === undefined) {
       return;
     }
-    this.setFillStrokeStyles_();
-    this.beginGeometry(polygonGeometry, feature);
+    const hitDetectionOnly = this.setFillStrokeStyles_();
+    this.beginGeometry(polygonGeometry, feature, hitDetectionOnly);
     if (state.fillStyle !== undefined) {
       this.hitDetectionInstructions.push([
         CanvasInstruction.SET_FILL_STYLE,
@@ -241,16 +254,22 @@ class CanvasPolygonBuilder extends CanvasBuilder {
 
   /**
    * @private
+   * @return {boolean} Rendering for hit detection only.
    */
   setFillStrokeStyles_() {
+    let hitDetectionOnly = true;
     const state = this.state;
     const fillStyle = state.fillStyle;
-    if (fillStyle !== undefined) {
+    if (fillStyle !== undefined && !isTransparent(fillStyle)) {
       this.updateFillStyle(state, this.createFill);
+      hitDetectionOnly = false;
     }
-    if (state.strokeStyle !== undefined) {
+    const strokeStyle = state.strokeStyle;
+    if (strokeStyle !== undefined && !isTransparent(strokeStyle)) {
       this.updateStrokeStyle(state, this.applyStroke);
+      hitDetectionOnly = false;
     }
+    return hitDetectionOnly;
   }
 }
 

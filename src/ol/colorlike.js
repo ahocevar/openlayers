@@ -1,7 +1,7 @@
 /**
  * @module ol/colorlike
  */
-import {toString} from './color.js';
+import {asArray, toString} from './color.js';
 
 /**
  * A type accepted by CanvasRenderingContext2D.fillStyle
@@ -26,4 +26,19 @@ export function asColorLike(color) {
   } else {
     return color;
   }
+}
+
+/**
+ * @param {ColorLike} color Color.
+ * @return {boolean} The color is transparent.
+ */
+export function isTransparent(color) {
+  if (typeof color === 'string') {
+    const colorArray = asArray(color);
+    if (colorArray.length == 4 && colorArray[3] == 0) {
+      console.log('transparent');
+      return true;
+    }
+  }
+  return false;
 }

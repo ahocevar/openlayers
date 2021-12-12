@@ -414,15 +414,20 @@ class CanvasBuilder extends VectorContext {
    * @protected
    * @param {import("../../geom/Geometry").default|import("../Feature.js").default} geometry The geometry.
    * @param {import("../../Feature.js").FeatureLike} feature Feature.
+   * @param {boolean} [opt_hitDetectionOnly] Only perform hit detection.
    */
-  beginGeometry(geometry, feature) {
-    this.beginGeometryInstruction1_ = [
-      CanvasInstruction.BEGIN_GEOMETRY,
-      feature,
-      0,
-      geometry,
-    ];
-    this.instructions.push(this.beginGeometryInstruction1_);
+  beginGeometry(geometry, feature, opt_hitDetectionOnly) {
+    if (opt_hitDetectionOnly) {
+      this.beginGeometryInstruction1_ = null;
+    } else {
+      this.beginGeometryInstruction1_ = [
+        CanvasInstruction.BEGIN_GEOMETRY,
+        feature,
+        0,
+        geometry,
+      ];
+      this.instructions.push(this.beginGeometryInstruction1_);
+    }
     this.beginGeometryInstruction2_ = [
       CanvasInstruction.BEGIN_GEOMETRY,
       feature,
@@ -621,12 +626,14 @@ class CanvasBuilder extends VectorContext {
    * @param {import("../../Feature.js").FeatureLike} feature Feature.
    */
   endGeometry(feature) {
-    this.beginGeometryInstruction1_[2] = this.instructions.length;
-    this.beginGeometryInstruction1_ = null;
+    const endGeometryInstruction = [CanvasInstruction.END_GEOMETRY, feature];
+    if (this.beginGeometryInstruction1_) {
+      this.beginGeometryInstruction1_[2] = this.instructions.length;
+      this.beginGeometryInstruction1_ = null;
+      this.instructions.push(endGeometryInstruction);
+    }
     this.beginGeometryInstruction2_[2] = this.hitDetectionInstructions.length;
     this.beginGeometryInstruction2_ = null;
-    const endGeometryInstruction = [CanvasInstruction.END_GEOMETRY, feature];
-    this.instructions.push(endGeometryInstruction);
     this.hitDetectionInstructions.push(endGeometryInstruction);
   }
 
