@@ -601,7 +601,7 @@ class RasterSource extends ImageSource {
      */
     this.tileQueue_ = new TileQueue(function () {
       return 1;
-    }, this.changed.bind(this));
+    }, changed);
 
     /**
      * The most recently requested frame state.
@@ -793,7 +793,7 @@ class RasterSource extends ImageSource {
       this.processSources_();
     }
 
-    if (frameState.animate) {
+    if (frameState.animate || this.tileQueue_.getTilesLoading() > 0) {
       requestAnimationFrame(this.changed.bind(this));
     }
 
@@ -869,11 +869,7 @@ class RasterSource extends ImageSource {
     }
     context.putImageData(output, 0, 0);
 
-    if (frameState.animate) {
-      requestAnimationFrame(this.changed.bind(this));
-    } else {
-      this.changed();
-    }
+    requestAnimationFrame(this.changed.bind(this));
     this.renderedRevision_ = this.getRevision();
 
     this.dispatchEvent(
