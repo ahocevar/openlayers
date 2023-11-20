@@ -12,19 +12,19 @@ import {
   hitDetect,
 } from '../../render/canvas/hitdetect.js';
 import {
-  apply,
-  makeInverse,
-  makeScale,
-  toString as transformToString,
-} from '../../transform.js';
-import {
   buffer,
   containsExtent,
   createEmpty,
+  getHeight,
   getWidth,
   intersects as intersectsExtent,
   wrapX as wrapExtentX,
 } from '../../extent.js';
+import {
+  compose as composeTransform,
+  makeInverse,
+  toString as transformToString,
+} from '../../transform.js';
 import {createCanvasContext2D, releaseCanvas} from '../../dom.js';
 import {
   defaultOrder as defaultRenderOrder,
@@ -177,8 +177,8 @@ class CanvasVectorLayerRenderer extends CanvasLayerRenderer {
       viewHints[ViewHint.ANIMATING] || viewHints[ViewHint.INTERACTING]
     );
     const context = this.compositionContext_;
-    const width = Math.round(frameState.size[0] * pixelRatio);
-    const height = Math.round(frameState.size[1] * pixelRatio);
+    const width = Math.round((getWidth(extent) / resolution) * pixelRatio);
+    const height = Math.round((getHeight(extent) / resolution) * pixelRatio);
 
     const multiWorld = vectorSource.getWrapX() && projection.canWrapX();
     const worldWidth = multiWorld ? getWidth(projectionExtent) : null;
@@ -192,7 +192,7 @@ class CanvasVectorLayerRenderer extends CanvasLayerRenderer {
       const transform = this.getRenderTransform(
         center,
         resolution,
-        rotation,
+        0,
         pixelRatio,
         width,
         height,
@@ -258,11 +258,26 @@ class CanvasVectorLayerRenderer extends CanvasLayerRenderer {
    * @return {HTMLElement|null} The rendered element.
    */
   renderFrame(frameState, target) {
+    const viewState = frameState.viewState;
     const pixelRatio = frameState.pixelRatio;
     const layerState = frameState.layerStatesArray[frameState.layerIndex];
+    const extent = frameState.extent;
+    const resolution = frameState.viewState.resolution;
+    // desired dimensions of the canvas in pixels
+    const width = Math.round((getWidth(extent) / resolution) * pixelRatio);
+    const height = Math.round((getHeight(extent) / resolution) * pixelRatio);
 
     // set forward and inverse pixel transforms
-    makeScale(this.pixelTransform, 1 / pixelRatio, 1 / pixelRatio);
+    composeTransform(
+      this.pixelTransform,
+      frameState.size[0] / 2,
+      frameState.size[1] / 2,
+      1 / pixelRatio,
+      1 / pixelRatio,
+      viewState.rotation,
+      -width / 2,
+      -height / 2
+    );
     makeInverse(this.inversePixelTransform, this.pixelTransform);
 
     const canvasTransform = transformToString(this.pixelTransform);
@@ -286,8 +301,6 @@ class CanvasVectorLayerRenderer extends CanvasLayerRenderer {
     }
 
     // resize and clear
-    const width = Math.round(frameState.size[0] * pixelRatio);
-    const height = Math.round(frameState.size[1] * pixelRatio);
     if (canvas.width != width || canvas.height != height) {
       canvas.width = width;
       canvas.height = height;
@@ -300,7 +313,6 @@ class CanvasVectorLayerRenderer extends CanvasLayerRenderer {
 
     this.preRender(context, frameState);
 
-    const viewState = frameState.viewState;
     const projection = viewState.projection;
 
     this.opacity_ = layerState.opacity;
@@ -344,9 +356,12 @@ class CanvasVectorLayerRenderer extends CanvasLayerRenderer {
    */
   getFeatures(pixel) {
     return new Promise((resolve) => {
-      if (!this.hitDetectionImageData_ && !this.animatingOrInteracting_) {
-        const size = [this.context.canvas.width, this.context.canvas.height];
-        apply(this.pixelTransform, size);
+      if (
+        this.frameState &&
+        !this.hitDetectionImageData_ &&
+        !this.animatingOrInteracting_
+      ) {
+        const size = this.frameState.size.slice();
         const center = this.renderedCenter_;
         const resolution = this.renderedResolution_;
         const rotation = this.renderedRotation_;

@@ -379,14 +379,13 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
       -width / 2,
       -height / 2
     );
+    makeInverse(this.inversePixelTransform, this.pixelTransform);
 
     const canvasTransform = toTransformString(this.pixelTransform);
 
     this.useContainer(target, canvasTransform, this.getBackground(frameState));
     const context = this.context;
     const canvas = context.canvas;
-
-    makeInverse(this.inversePixelTransform, this.pixelTransform);
 
     // set scale transform for calculating tile positions on the canvas
     composeTransform(
