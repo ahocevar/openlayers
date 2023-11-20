@@ -204,17 +204,19 @@ class CanvasImageLayerRenderer extends CanvasLayerRenderer {
     // clipped rendering if layer extent is set
     let clipped = false;
     let render = true;
+    let clipExtent = frameState.extent;
     if (layerState.extent) {
       const layerExtent = fromUserExtent(
         layerState.extent,
         viewState.projection
       );
-      render = intersectsExtent(layerExtent, frameState.extent);
-      clipped = render && !containsExtent(layerExtent, frameState.extent);
+      render = intersectsExtent(layerExtent, clipExtent);
+      clipped = render && !containsExtent(layerExtent, clipExtent);
       if (clipped) {
-        this.clipUnrotated(context, frameState, layerExtent);
+        clipExtent = getIntersection(layerExtent, clipExtent);
       }
     }
+    this.clipUnrotated(context, frameState, clipExtent);
 
     const img = image.getImage();
 

@@ -16,6 +16,7 @@ import {
   containsExtent,
   createEmpty,
   getHeight,
+  getIntersection,
   getWidth,
   intersects as intersectsExtent,
   wrapX as wrapExtentX,
@@ -320,22 +321,22 @@ class CanvasVectorLayerRenderer extends CanvasLayerRenderer {
 
     // clipped rendering if layer extent is set
     let clipped = false;
+    let clipExtent = extent;
     if (render && layerState.extent && this.clipping) {
       const layerExtent = fromUserExtent(layerState.extent, projection);
-      render = intersectsExtent(layerExtent, frameState.extent);
-      clipped = render && !containsExtent(layerExtent, frameState.extent);
+      render = intersectsExtent(layerExtent, clipExtent);
+      clipped = render && !containsExtent(layerExtent, clipExtent);
       if (clipped) {
-        this.clipUnrotated(this.compositionContext_, frameState, layerExtent);
+        clipExtent = getIntersection(layerExtent, clipExtent);
       }
     }
+    this.clipUnrotated(this.compositionContext_, frameState, clipExtent);
 
     if (render) {
       this.renderWorlds(replayGroup, frameState);
     }
 
-    if (clipped) {
-      this.compositionContext_.restore();
-    }
+    this.compositionContext_.restore();
 
     this.releaseCompositionContext_();
 

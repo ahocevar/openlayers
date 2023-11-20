@@ -406,9 +406,13 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
       context.clearRect(0, 0, width, height);
     }
 
-    if (layerExtent) {
-      this.clipUnrotated(context, frameState, layerExtent);
-    }
+    this.clipUnrotated(
+      context,
+      frameState,
+      layerExtent
+        ? getIntersection(frameState.extent, layerExtent)
+        : frameState.extent
+    );
 
     if (!tileSource.getInterpolate()) {
       context.imageSmoothingEnabled = false;
@@ -559,9 +563,7 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
 
     this.postRender(context, frameState);
 
-    if (layerState.extent) {
-      context.restore();
-    }
+    context.restore();
     context.imageSmoothingEnabled = true;
 
     if (canvasTransform !== canvas.style.transform) {
