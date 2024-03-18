@@ -1093,6 +1093,20 @@ class VectorSource extends Source {
     }
   }
 
+  removeFeatures(features) {
+    const removedFeatures = [];
+    for (let i = 0, ii = features.length; i < ii; ++i) {
+      const removedFeature = this.removeFeatureInternal(features[i]);
+      if (!removedFeature) {
+        continue;
+      }
+      removedFeatures.push(removedFeature);
+    }
+    if (removedFeatures.length > 0) {
+      this.changed();
+    }
+  }
+
   /**
    * Remove feature without firing a `change` event.
    * @param {FeatureType} feature Feature.
@@ -1113,9 +1127,11 @@ class VectorSource extends Source {
       delete this.idIndex_[id.toString()];
     }
     delete this.uidIndex_[featureKey];
-    this.dispatchEvent(
-      new VectorSourceEvent(VectorEventType.REMOVEFEATURE, feature),
-    );
+    if (this.hasListener(VectorEventType.REMOVEFEATURE)) {
+      this.dispatchEvent(
+        new VectorSourceEvent(VectorEventType.REMOVEFEATURE, feature),
+      );
+    }
     return feature;
   }
 
