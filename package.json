@@ -129,7 +129,7 @@
     "pmtiles": "^4.0.1",
     "pngjs": "^7.0.0",
     "proj4": "2.20.2",
-    "puppeteer": "24.34.0",
+    "puppeteer": "24.36.1",
     "rollup": "^4.1.4",
     "rollup-plugin-external-globals": "^0.13.0",
     "semver": "^7.3.7",
@@ -148,7 +148,7 @@
     "webpack-sources": "^3.2.0",
     "worker-loader": "^3.0.8",
     "yargs": "^18.0.0",
-    "zarrita": "^0.5.4"
+    "zarrita": "^0.6.0"
   },
   "browserslist": [
     "> 1%",
