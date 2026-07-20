@@ -113,7 +113,7 @@
     "jstransformer-handlebars": "^1.2.0",
     "jsts": "^2.11.3",
     "loglevelnext": "^6.0.0",
-    "marked": "18.0.5",
+    "marked": "18.0.6",
     "metalsmith": "^2.5.0",
     "mocha": "11.7.6",
     "monotone-chain-convex-hull": "^1.1.0",
