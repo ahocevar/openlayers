@@ -1,5 +1,4 @@
 import Map from '../src/ol/Map.js';
-import View from '../src/ol/View.js';
 import TileLayer from '../src/ol/layer/WebGLTile.js';
 import GeoTIFF from '../src/ol/source/GeoTIFF.js';
 
@@ -103,27 +102,29 @@ const ndviPaletteViridis = {
   ],
 };
 
+const base =
+  'https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/36/Q/WD/2020/7/S2A_36QWD_20200701_0_L2A/';
+
+const source = new GeoTIFF({
+  normalize: false,
+  sources: [
+    // visible red, green and blue, and near infrared - bands 1 to 4 above
+    {url: base + 'B04.tif'},
+    {url: base + 'B03.tif'},
+    {url: base + 'B02.tif'},
+    {url: base + 'B08.tif'},
+  ],
+});
+
 const layer = new TileLayer({
   style: trueColor,
-  source: new GeoTIFF({
-    normalize: false,
-    sources: [
-      {
-        url: 'https://s2downloads.eox.at/demo/EOxCloudless/2020/rgbnir/s2cloudless2020-16bits_sinlge-file_z0-4.tif',
-      },
-    ],
-  }),
+  source: source,
 });
 
 const map = new Map({
   target: 'map',
   layers: [layer],
-  view: new View({
-    projection: 'EPSG:4326',
-    center: [0, 0],
-    zoom: 2,
-    maxZoom: 6,
-  }),
+  view: source.getView(),
 });
 
 const styles = {
