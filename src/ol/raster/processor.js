@@ -2,7 +2,6 @@
  * @module ol/raster/processor
  */
 import Processor from '../Processor.js';
-import {create as createRasterStyleWorker} from '../worker/rasterStyle.js';
 import {createJobHandler} from './pipeline.js';
 
 /**
@@ -34,8 +33,9 @@ let users = 0;
  * everything else for as long as it takes, but it is how raster styles work under a
  * content security policy that does not allow `worker-src blob:`.
  *
- * The pool is created when the first styled data tile is rendered and terminated when the
- * last layer using it is disposed, so set this before rendering such a layer.
+ * The pool is created when the first styled data tile is rendered, which is also when the
+ * worker itself is fetched, and terminated when the last layer using it is disposed.  Set
+ * this before rendering such a layer.
  *
  * @param {number} count The number of workers.
  * @api
@@ -51,6 +51,86 @@ export function setWorkerCount(count) {
  */
 export function getWorkerCount() {
   return workerCount;
+}
+
+/**
+ * The pool wants a worker straight away, so this hands it one that holds on to messages
+ * until the dynamically imported module arrives.
+ * @return {import("../Processor.js").WorkerLike} The deferred worker.
+ */
+function createDeferredWorker() {
+  /** @type {Array<[*, Array<Transferable>|undefined]>} */
+  const pending = [];
+
+  /** @type {import("../Processor.js").WorkerLike|null} */
+  let worker = null;
+
+  let terminated = false;
+
+  /** @type {string|null} */
+  let error = null;
+
+  /** @type {import("../Processor.js").WorkerLike} */
+  const deferred = {
+    onmessage: null,
+    postMessage: function (message, transfer) {
+      if (terminated) {
+        return;
+      }
+      if (worker) {
+        worker.postMessage(message, transfer);
+      } else if (error) {
+        answerWithError();
+      } else {
+        pending.push([message, transfer]);
+      }
+    },
+    terminate: function () {
+      terminated = true;
+      pending.length = 0;
+      worker?.terminate();
+    },
+  };
+
+  /**
+   * Answer one message the worker will never answer, so that the tile waiting for it
+   * fails instead of staying pending forever.  Asynchronously, like a real worker, so
+   * that the pool is never called back while it is still dispatching.
+   */
+  function answerWithError() {
+    Promise.resolve().then(() => {
+      if (!terminated) {
+        deferred.onmessage?.({data: {error: error}});
+      }
+    });
+  }
+
+  import('../worker/rasterStyle.js').then(
+    ({create}) => {
+      if (terminated) {
+        return;
+      }
+      const created = /** @type {import("../Processor.js").WorkerLike} */ (
+        /** @type {*} */ (create())
+      );
+      created.onmessage = (event) => deferred.onmessage?.(event);
+      worker = created;
+      for (const [message, transfer] of pending) {
+        created.postMessage(message, transfer);
+      }
+      pending.length = 0;
+    },
+    (reason) => {
+      error = `Failed to load the raster style worker: ${reason.message}`;
+      const count = pending.length;
+      pending.length = 0;
+      for (let i = 0; i < count; ++i) {
+        answerWithError();
+      }
+    },
+  );
+
+  return deferred;
 }
 
 /**
@@ -90,11 +170,7 @@ export function acquireProcessor() {
     processor = new Processor({
       threads: workerCount,
       queue: Infinity,
-      createWorker: workerCount
-        ? /** @type {function(): import("../Processor.js").WorkerLike} */ (
-            /** @type {*} */ (createRasterStyleWorker)
-          )
-        : createMainThreadWorker,
+      createWorker: workerCount ? createDeferredWorker : createMainThreadWorker,
     });
   }
   ++users;
