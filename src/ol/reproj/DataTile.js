@@ -2,7 +2,13 @@
  * @module ol/reproj/DataTile
  */
 
-import DataTile, {asArrayLike, asImageLike, toArray} from '../DataTile.js';
+import DataTile, {
+  asArrayLike,
+  asImageLike,
+  getBandCount,
+  toArray,
+  toImageData,
+} from '../DataTile.js';
 import TileState from '../TileState.js';
 import {createCanvasContext2D} from '../dom.js';
 import {listen, unlistenByKey} from '../events.js';
@@ -378,10 +384,7 @@ class ReprojDataTile extends DataTile {
       );
       const bytesPerElement = DataType.BYTES_PER_ELEMENT;
       const bytesPerPixel = (bytesPerElement * tileDataR.length) / pixelCount;
-      const bytesPerRow = tileDataR.byteLength / pixelSize[1];
-      const bandCount = Math.floor(
-        bytesPerRow / bytesPerElement / pixelSize[0],
-      );
+      const bandCount = getBandCount(tileDataR, pixelSize);
       const extent = this.sourceTileGrid_.getTileCoordExtent(tile.tileCoord);
       extent[0] += source.offset;
       extent[2] += source.offset;
@@ -567,10 +570,14 @@ class ReprojDataTile extends DataTile {
 
     if (imageLike) {
       const context = createCanvasContext2D(targetWidth, targetHeight);
-      context.putImageData(context.createImageData(outWidth, outHeight), 0, 0);
-      const imageData = context.getImageData(0, 0, outWidth, outHeight);
-      imageData.data.set(/** @type {Uint8ClampedArray} */ (dataR));
-      context.putImageData(imageData, 0, 0);
+      // TODO Image-like sources configured without alpha get a coverage band
+      // appended above, so `outBandCount` is 5 here and the coverage is dropped
+      // instead of being multiplied into the alpha band.
+      context.putImageData(
+        toImageData(dataR, [outWidth, outHeight], outBandCount),
+        0,
+        0,
+      );
       this.reprojData_ = context.canvas;
     } else {
       this.reprojData_ = dataR;

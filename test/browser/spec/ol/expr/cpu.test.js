@@ -25,9 +25,27 @@ describe('ol/expr/cpu.js', () => {
      */
     const cases = [
       {
+        // Colors mix component-wise in sRGB, as the style spec describes and as
+        // GLSL mix() does in the WebGL renderer.
         name: 'interpolate (linear color)',
         type: ColorType,
         expression: ['interpolate', ['linear'], 0.5, 0, 'red', 1, [0, 255, 0]],
+        expected: [127.5, 127.5, 0, 1],
+      },
+      {
+        // The perceptual space is opt-in, and gives a brighter midpoint than
+        // mixing the channels does.
+        name: 'interpolate-hcl (linear color)',
+        type: ColorType,
+        expression: [
+          'interpolate-hcl',
+          ['linear'],
+          0.5,
+          0,
+          'red',
+          1,
+          [0, 255, 0],
+        ],
         expected: [209, 169, 0, 1],
       },
     ];

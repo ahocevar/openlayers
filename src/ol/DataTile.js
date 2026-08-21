@@ -82,6 +82,104 @@ export function toArray(image) {
 }
 
 /**
+ * Determine how many bands per pixel a chunk of tile data holds.
+ * @param {ArrayLike} data The tile data.
+ * @param {import('./size.js').Size} size The pixel size of the data, gutter included.
+ * @return {number} The number of bands per pixel.
+ */
+export function getBandCount(data, size) {
+  const bytesPerElement = data instanceof Float32Array ? 4 : 1;
+  const bytesPerRow = data.byteLength / size[1];
+  return Math.floor(bytesPerRow / bytesPerElement / size[0]);
+}
+
+/**
+ * Expand array tile data into RGBA image data.
+ *
+ * Bands are mapped the way {@link module:ol/webgl/TileTexture} maps them onto texture
+ * formats, so that an unstyled tile looks the same however it is rendered: one band is
+ * luminance, two are luminance and alpha, three are RGB, and four or more are RGBA taken
+ * from the first four bands.  `Float32Array` values are treated as 0 to 1, as they are in
+ * a float texture; integer values are used as they are.
+ *
+ * @param {ArrayLike} data The tile data.
+ * @param {import('./size.js').Size} size The pixel size of the data, gutter included.
+ * @param {number} bandCount The number of bands per pixel.
+ * @return {ImageData} The image data.
+ */
+export function toImageData(data, size, bandCount) {
+  const width = size[0];
+  const height = size[1];
+  const pixelCount = width * height;
+
+  let values;
+  let scale;
+  if (data instanceof Float32Array) {
+    values = data;
+    scale = 255;
+  } else {
+    values =
+      data instanceof DataView
+        ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+        : data;
+    scale = 1;
+  }
+
+  if (
+    bandCount === 4 &&
+    values instanceof Uint8ClampedArray &&
+    values.length === pixelCount * 4
+  ) {
+    // Already in the target layout, so hand the array over as it is.  The caller
+    // draws the result straight away, so sharing the tile's buffer is safe.
+    return new ImageData(
+      /** @type {Uint8ClampedArray<ArrayBuffer>} */ (/** @type {*} */ (values)),
+      width,
+      height,
+    );
+  }
+
+  const rgba = new Uint8ClampedArray(pixelCount * 4);
+  for (let i = 0, offset = 0, target = 0; i < pixelCount; ++i) {
+    switch (bandCount) {
+      case 1: {
+        const value = values[offset] * scale;
+        rgba[target] = value;
+        rgba[target + 1] = value;
+        rgba[target + 2] = value;
+        rgba[target + 3] = 255;
+        break;
+      }
+      case 2: {
+        const value = values[offset] * scale;
+        rgba[target] = value;
+        rgba[target + 1] = value;
+        rgba[target + 2] = value;
+        rgba[target + 3] = values[offset + 1] * scale;
+        break;
+      }
+      case 3: {
+        rgba[target] = values[offset] * scale;
+        rgba[target + 1] = values[offset + 1] * scale;
+        rgba[target + 2] = values[offset + 2] * scale;
+        rgba[target + 3] = 255;
+        break;
+      }
+      default: {
+        rgba[target] = values[offset] * scale;
+        rgba[target + 1] = values[offset + 1] * scale;
+        rgba[target + 2] = values[offset + 2] * scale;
+        rgba[target + 3] = values[offset + 3] * scale;
+        break;
+      }
+    }
+    offset += bandCount;
+    target += 4;
+  }
+  return new ImageData(rgba, width, height);
+}
+
+/**
  * @type {import('./size.js').Size}
  */
 const defaultSize = [256, 256];

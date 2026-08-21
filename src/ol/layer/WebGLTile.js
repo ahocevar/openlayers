@@ -9,7 +9,7 @@ import {
   uniformNameForVariable,
 } from '../expr/gpu.js';
 import LayerProperty from '../layer/Property.js';
-import {equivalent} from '../proj.js';
+import {getSourceBandCount, getSourceNodataBandIndex} from '../raster/style.js';
 import {expressionToGlsl} from '../render/webgl/compileUtil.js';
 import WebGLTileLayerRenderer, {
   Attributes,
@@ -22,24 +22,10 @@ import BaseTileLayer from './BaseTile.js';
  */
 
 /**
- * @typedef {Object} Style
- * Translates tile data to rendered pixels.
+ * Translates tile data to rendered pixels.  Shared with {@link module:ol/layer/Tile~TileLayer},
+ * so a style can move between the canvas and WebGL renderers unchanged.
  *
- * @property {Object<string, (string|number)>} [variables] Style variables.  Each variable must hold a number or string.  These
- * variables can be used in the `color`, `brightness`, `contrast`, `exposure`, `saturation` and `gamma`
- * {@link import("../expr/expression.js").ExpressionValue expressions}, using the `['var', 'varName']` operator.
- * To update style variables, use the {@link import("./WebGLTile.js").default#updateStyleVariables} method.
- * @property {import("../expr/expression.js").ExpressionValue} [color] An expression applied to color values.
- * @property {import("../expr/expression.js").ExpressionValue} [brightness=0] Value used to decrease or increase
- * the layer brightness.  Values range from -1 to 1.
- * @property {import("../expr/expression.js").ExpressionValue} [contrast=0] Value used to decrease or increase
- * the layer contrast.  Values range from -1 to 1.
- * @property {import("../expr/expression.js").ExpressionValue} [exposure=0] Value used to decrease or increase
- * the layer exposure.  Values range from -1 to 1.
- * @property {import("../expr/expression.js").ExpressionValue} [saturation=0] Value used to decrease or increase
- * the layer saturation.  Values range from -1 to 1.
- * @property {import("../expr/expression.js").ExpressionValue} [gamma=1] Apply a gamma correction to the layer.
- * Values range from 0 to infinity.
+ * @typedef {import("../style/raster.js").RasterStyle} Style
  */
 
 /**
@@ -439,35 +425,12 @@ class WebGLTileLayer extends BaseTileLayer {
   }
 
   /**
-   * Whether reprojecting the source to the given projection appends a coverage
-   * alpha band (only for sources that do not already carry an alpha band).
-   * @private
-   * @param {SourceType} source The render source.
-   * @param {import("../proj/Projection.js").default} [projection] The render projection.
-   * @return {boolean} A coverage band is added.
-   */
-  usesCoverageBand_(source, projection) {
-    if (!source || !projection || source.hasAlpha !== false) {
-      return false;
-    }
-    const sourceProjection = source.getProjection();
-    return !!sourceProjection && !equivalent(sourceProjection, projection);
-  }
-
-  /**
    * @private
    * @param {import("../proj/Projection.js").default} [projection] The render projection.
    * @return {number} The number of source bands.
    */
   getSourceBandCount_(projection) {
-    const source = this.getFirstSource_();
-    const bandCount = source && 'bandCount' in source ? source.bandCount : 4;
-    return this.usesCoverageBand_(
-      /** @type {SourceType} */ (source),
-      projection,
-    )
-      ? bandCount + 1
-      : bandCount;
+    return getSourceBandCount(this.getFirstSource_(), projection);
   }
 
   /**
@@ -476,15 +439,7 @@ class WebGLTileLayer extends BaseTileLayer {
    * @return {number|undefined} The 1-based band index for the nodata alpha band.
    */
   getSourceNodataBandIndex_(projection) {
-    const source = this.getFirstSource_();
-    if (!source) {
-      return undefined;
-    }
-    if (this.usesCoverageBand_(source, projection)) {
-      // The appended coverage band is the last (1-based) band.
-      return source.bandCount + 1;
-    }
-    return 'nodataBandIndex' in source ? source.nodataBandIndex : undefined;
+    return getSourceNodataBandIndex(this.getFirstSource_(), projection);
   }
 
   /**

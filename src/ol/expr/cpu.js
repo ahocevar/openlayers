@@ -24,12 +24,25 @@ import {ColorType, LiteralExpression, Ops, parse} from './expression.js';
  */
 
 /**
+ * The optional properties are only used by raster styles, where `['band', ...]` reads
+ * from tile data.  Use {@link newRasterEvaluationContext} to get a context with them, so
+ * that the per-pixel loop can mutate one object of a fixed shape.
+ *
  * @typedef {Object} EvaluationContext
  * @property {Object<string, *>} properties The values for properties used in 'get' expressions.
  * @property {Object<string, *>} variables The values for variables used in 'var' expressions.
  * @property {number} resolution The map resolution.
  * @property {string|number|null} featureId The feature id.
  * @property {string} geometryType Geometry type of the current object.
+ * @property {Uint8Array|Uint8ClampedArray|Float32Array|null} [data] Tile data read by 'band'
+ * expressions.  `DataView` tile data has to be viewed as a typed array first.
+ * @property {import('../size.js').Size} [size] The pixel size of the data, gutter included.
+ * @property {number} [bandCount] The number of bands per pixel in the data.
+ * @property {number} [bandScale] Multiplier applied to raw band values.  Integer data is
+ * normalized to the 0 to 1 range with `1 / 255`, matching how an integer texture is sampled;
+ * floating point data passes through with `1`.
+ * @property {number} [col] The column of the pixel being evaluated.
+ * @property {number} [row] The row of the pixel being evaluated.
  */
 
 /**
@@ -42,6 +55,26 @@ export function newEvaluationContext() {
     resolution: NaN,
     featureId: null,
     geometryType: '',
+  };
+}
+
+/**
+ * A context for evaluating a raster style over tile data.
+ * @return {EvaluationContext} A new evaluation context.
+ */
+export function newRasterEvaluationContext() {
+  return {
+    variables: {},
+    properties: {},
+    resolution: NaN,
+    featureId: null,
+    geometryType: '',
+    data: null,
+    size: [0, 0],
+    bandCount: 0,
+    bandScale: 1,
+    col: 0,
+    row: 0,
   };
 }
 
@@ -174,11 +207,24 @@ function compileExpression(expression, context) {
     case Ops.Match: {
       return compileMatchExpression(expression, context);
     }
-    case Ops.Interpolate: {
+    case Ops.Interpolate:
+    case Ops.InterpolateHcl: {
       return compileInterpolateExpression(expression, context);
     }
     case Ops.ToString: {
       return compileConvertExpression(expression, context);
+    }
+    case Ops.Array: {
+      return compileArrayExpression(expression, context);
+    }
+    case Ops.Color: {
+      return compileColorExpression(expression, context);
+    }
+    case Ops.Band: {
+      return compileBandExpression(expression, context);
+    }
+    case Ops.Palette: {
+      return compilePaletteExpression(expression, context);
     }
     default: {
       throw new Error(`Unsupported operator ${operator}`);
@@ -186,11 +232,138 @@ function compileExpression(expression, context) {
     // TODO: unimplemented
     // Ops.Zoom
     // Ops.Time
-    // Ops.Array
-    // Ops.Color
-    // Ops.Band
-    // Ops.Palette
   }
+}
+
+/**
+ * @param {import('./expression.js').CallExpression} expression The call expression.
+ * @param {import('./expression.js').ParsingContext} context The parsing context.
+ * @return {NumberArrayEvaluator} The evaluator function.
+ */
+function compileArrayExpression(expression, context) {
+  const length = expression.args.length;
+  const args = new Array(length);
+  for (let i = 0; i < length; ++i) {
+    args[i] = compileExpression(expression.args[i], context);
+  }
+  // A color array is a `vec4` in a shader, so its channels are in the 0 to 1 range.
+  if (expression.type === ColorType && (length === 3 || length === 4)) {
+    const alpha = length === 4 ? args[3] : null;
+    return (context) => [
+      /** @type {number} */ (args[0](context)) * 255,
+      /** @type {number} */ (args[1](context)) * 255,
+      /** @type {number} */ (args[2](context)) * 255,
+      alpha ? /** @type {number} */ (alpha(context)) : 1,
+    ];
+  }
+  return (context) => {
+    const values = new Array(length);
+    for (let i = 0; i < length; ++i) {
+      values[i] = args[i](context);
+    }
+    return values;
+  };
+}
+
+/**
+ * Assemble a color from numbers.  One or two arguments give a gray value and an optional
+ * alpha; three or four give red, green, blue and an optional alpha.  Channels are in the
+ * 0 to 255 range and alpha in the 0 to 1 range, as everywhere else in the library.
+ *
+ * @param {import('./expression.js').CallExpression} expression The call expression.
+ * @param {import('./expression.js').ParsingContext} context The parsing context.
+ * @return {ColorLikeEvaluator} The evaluator function.
+ */
+function compileColorExpression(expression, context) {
+  const length = expression.args.length;
+  const args = new Array(length);
+  for (let i = 0; i < length; ++i) {
+    args[i] = compileExpression(expression.args[i], context);
+  }
+  if (length < 3) {
+    const alpha = length === 2 ? args[1] : null;
+    return (context) => {
+      const gray = args[0](context);
+      return [gray, gray, gray, alpha ? alpha(context) : 1];
+    };
+  }
+  const alpha = length === 4 ? args[3] : null;
+  return (context) => [
+    args[0](context),
+    args[1](context),
+    args[2](context),
+    alpha ? alpha(context) : 1,
+  ];
+}
+
+/**
+ * Read a band value from the tile data on the evaluation context.  Offsets address a
+ * neighbouring pixel, clamped to the edge of the tile the way a texture lookup is.
+ *
+ * @param {import('./expression.js').CallExpression} expression The call expression.
+ * @param {import('./expression.js').ParsingContext} context The parsing context.
+ * @return {NumberEvaluator} The evaluator function.
+ */
+function compileBandExpression(expression, context) {
+  const args = expression.args;
+  const bandExpression = compileExpression(args[0], context);
+  const xOffsetExpression =
+    args.length > 1 ? compileExpression(args[1], context) : null;
+  const yOffsetExpression =
+    args.length > 2 ? compileExpression(args[2], context) : null;
+
+  return (context) => {
+    const data = context.data;
+    const size = context.size;
+    if (!data || !size) {
+      throw new Error('Band expressions require a source with array data');
+    }
+    const width = size[0];
+    let col = /** @type {number} */ (context.col);
+    let row = /** @type {number} */ (context.row);
+    if (xOffsetExpression) {
+      col += /** @type {number} */ (xOffsetExpression(context));
+    }
+    if (yOffsetExpression) {
+      row += /** @type {number} */ (yOffsetExpression(context));
+    }
+    col = col < 0 ? 0 : col > width - 1 ? width - 1 : col;
+    const height = size[1];
+    row = row < 0 ? 0 : row > height - 1 ? height - 1 : row;
+
+    const bandCount = /** @type {number} */ (context.bandCount);
+    const band = /** @type {number} */ (bandExpression(context));
+    const offset = (row * width + col) * bandCount + (band - 1);
+    return data[offset] * /** @type {number} */ (context.bandScale);
+  };
+}
+
+/**
+ * @param {import('./expression.js').CallExpression} expression The call expression.
+ * @param {import('./expression.js').ParsingContext} context The parsing context.
+ * @return {ColorLikeEvaluator} The evaluator function.
+ */
+function compilePaletteExpression(expression, context) {
+  const args = expression.args;
+  const indexExpression = compileExpression(args[0], context);
+
+  // The palette colors are literals, so they can be resolved once here.
+  const count = args.length - 1;
+  const colors = new Array(count);
+  const literalContext = newEvaluationContext();
+  for (let i = 0; i < count; ++i) {
+    colors[i] = withAlpha(
+      /** @type {import('../color.js').Color} */ (
+        compileExpression(args[i + 1], context)(literalContext)
+      ),
+    );
+  }
+
+  return (context) => {
+    const index = Math.floor(/** @type {number} */ (indexExpression(context)));
+    // Sampling the palette texture clamps to its edges.
+    return colors[index < 0 ? 0 : index > count - 1 ? count - 1 : index];
+  };
 }
 
 /**
@@ -526,6 +699,12 @@ function compileInterpolateExpression(expression, context) {
   for (let i = 0; i < length; ++i) {
     args[i] = compileExpression(expression.args[i], context);
   }
+  const interpolateColorFn =
+    expression.operator === Ops.InterpolateHcl
+      ? // perceptual interpolation
+        interpolateHclColor
+      : // sRGB interpolation, equivalent to GLSL `mix()` in `gpu.js`
+        interpolateRgbColor;
   return (context) => {
     const base = args[0](context);
     const value = args[1](context);
@@ -544,7 +723,7 @@ function compileInterpolateExpression(expression, context) {
           return output;
         }
         if (isColor) {
-          return interpolateColor(
+          return interpolateColorFn(
             base,
             value,
             previousInput,
@@ -621,6 +800,8 @@ function interpolateNumber(base, value, input1, output1, input2, output2) {
 }
 
 /**
+ * Interpolate two colors component-wise in sRGB, which is what GLSL `mix()` does in the
+ * WebGL renderer, so that `interpolate` produces the same gradient on both renderers.
  * @param {number} base The base.
  * @param {number} value The value.
  * @param {number} input1 The first input value.
@@ -629,7 +810,34 @@ function interpolateNumber(base, value, input1, output1, input2, output2) {
  * @param {import('../color.js').Color} rgba2 The second output value.
  * @return {import('../color.js').Color} The interpolated color.
  */
-function interpolateColor(base, value, input1, rgba1, input2, rgba2) {
+function interpolateRgbColor(base, value, input1, rgba1, input2, rgba2) {
+  const delta = input2 - input1;
+  if (delta === 0) {
+    return rgba1;
+  }
+  // Channels are left unrounded, so that a raster pipeline that goes on to apply gamma
+  // or contrast does not compound a quantization error at every stop.  GLSL `mix()` is
+  // exact for the same reason; colors are quantized once, where they are written.
+  return [
+    interpolateNumber(base, value, input1, rgba1[0], input2, rgba2[0]),
+    interpolateNumber(base, value, input1, rgba1[1], input2, rgba2[1]),
+    interpolateNumber(base, value, input1, rgba1[2], input2, rgba2[2]),
+    interpolateNumber(base, value, input1, rgba1[3], input2, rgba2[3]),
+  ];
+}
+
+/**
+ * Interpolate two colors in the Hue-Chroma-Luminance space, for the
+ * `interpolate-hcl` operator.
+ * @param {number} base The base.
+ * @param {number} value The value.
+ * @param {number} input1 The first input value.
+ * @param {import('../color.js').Color} rgba1 The first output value.
+ * @param {number} input2 The second input value.
+ * @param {import('../color.js').Color} rgba2 The second output value.
+ * @return {import('../color.js').Color} The interpolated color.
+ */
+function interpolateHclColor(base, value, input1, rgba1, input2, rgba2) {
   const delta = input2 - input1;
   if (delta === 0) {
     return rgba1;

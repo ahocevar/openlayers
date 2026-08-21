@@ -1,11 +1,16 @@
 /**
  * @module ol/renderer/canvas/TileLayer
  */
-import DataTile, {asImageLike} from '../../DataTile.js';
+import DataTile, {
+  asArrayLike,
+  asImageLike,
+  getBandCount,
+} from '../../DataTile.js';
 import ImageTile from '../../ImageTile.js';
 import TileRange from '../../TileRange.js';
 import TileState from '../../TileState.js';
 import {ascending} from '../../array.js';
+import EventType from '../../events/EventType.js';
 import {
   containsCoordinate,
   createEmpty,
@@ -17,6 +22,9 @@ import {
   subtractExtents,
 } from '../../extent.js';
 import {equivalent, fromUserExtent} from '../../proj.js';
+import StyledTile from '../../raster/StyledTile.js';
+import {acquireProcessor, releaseProcessor} from '../../raster/processor.js';
+import {getSourceNodataBandIndex} from '../../raster/style.js';
 import ReprojTile from '../../reproj/Tile.js';
 import {toSize} from '../../size.js';
 import LRUCache from '../../structs/LRUCache.js';
@@ -30,6 +38,37 @@ import {
 } from '../../transform.js';
 import {getUid} from '../../util.js';
 import CanvasLayerRenderer from './Layer.js';
+
+/**
+ * A tile cache that says which tile it is about to drop, so that whatever the renderer
+ * derived from that tile can be discarded at the same time instead of lingering until the
+ * tile is garbage collected.
+ * @extends {LRUCache<import("../../Tile.js").default>}
+ */
+class TileCache extends LRUCache {
+  /**
+   * @param {number} highWaterMark High water mark.
+   * @param {function(import("../../Tile.js").default): void} onDelete Called with the tile
+   *     that is about to be removed from the cache.
+   */
+  constructor(highWaterMark, onDelete) {
+    super(highWaterMark);
+
+    /**
+     * @type {function(import("../../Tile.js").default): void}
+     * @private
+     */
+    this.onDelete_ = onDelete;
+  }
+
+  /**
+   * @override
+   */
+  deleteOldest() {
+    this.onDelete_(this.peekLast());
+    super.deleteOldest();
+  }
+}
 
 /**
  * @typedef {Object<number, Set<import("../../Tile.js").default>>} TileLookup
@@ -188,7 +227,9 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
      * @type {import("../../structs/LRUCache.js").default<import("../../Tile.js").default>}
      * @private
      */
-    this.tileCache_ = new LRUCache(cacheSize);
+    this.tileCache_ = new TileCache(cacheSize, (tile) =>
+      this.disposeStyledTile_(tile),
+    );
 
     /**
      * @type {import("../../structs/LRUCache.js").default<import("../../Tile.js").default|null>|null}
@@ -202,7 +243,177 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
      */
     this.layerExtent = null;
 
+    /**
+     * Array tile data expanded to something drawable, keyed by tile uid, so the work runs
+     * once per tile instead of once per frame.  Entries are disposed when the tile cache
+     * drops the tile they belong to.
+     * @type {Object<string, StyledTile>}
+     * @private
+     */
+    this.styledTiles_ = {};
+
+    /**
+     * @type {import("../../Processor.js").default|null}
+     * @private
+     */
+    this.processor_ = null;
+
     this.maxStaleKeys = cacheSize * 0.5;
+  }
+
+  /**
+   * The pixel size of a data tile's data, gutter included.
+   * @param {import("../../DataTile.js").default} tile The tile.
+   * @param {number} gutter The tile gutter.
+   * @return {import("../../size.js").Size} The pixel size.
+   * @private
+   */
+  getDataPixelSize_(tile, gutter) {
+    const size = tile.getSize();
+    return [size[0] + 2 * gutter, size[1] + 2 * gutter];
+  }
+
+  /**
+   * The pool that runs raster styles.  Every layer shares one, so that the worker count
+   * bounds what the page uses instead of what one layer uses.  It is taken hold of on
+   * first use, so layers without a style never spawn a worker.
+   * @return {import("../../Processor.js").default} The processor.
+   * @private
+   */
+  getProcessor_() {
+    if (!this.processor_) {
+      this.processor_ = acquireProcessor();
+    }
+    return this.processor_;
+  }
+
+  /**
+   * The drawable form of a data tile's array data, converting or styling it if this is the
+   * first time it has been asked for at the current style revision.
+   * @param {import("../../DataTile.js").default} tile The tile.
+   * @param {import("../../DataTile.js").ArrayLike} data The tile data.
+   * @param {number} gutter The tile gutter.
+   * @param {import("../../Map.js").FrameState} frameState Frame state.
+   * @return {StyledTile} The styled tile.
+   * @private
+   */
+  getStyledTile_(tile, data, gutter, frameState) {
+    const layer = this.getLayer();
+    // `getStyle` would also match a vector tile layer, whose style means something else.
+    const rasterLayer =
+      'getStyleRevision' in layer
+        ? /** @type {import("../../layer/Tile.js").default} */ (
+            /** @type {*} */ (layer)
+          )
+        : null;
+    const style = rasterLayer ? rasterLayer.getStyle() : null;
+    const revision = style
+      ? /** @type {import("../../layer/Tile.js").default} */ (
+          rasterLayer
+        ).getStyleRevision()
+      : 0;
+
+    const uid = getUid(tile);
+    let styledTile = this.styledTiles_[uid];
+    if (styledTile) {
+      if (styledTile.revision === revision) {
+        return styledTile;
+      }
+      styledTile.dispose();
+    }
+
+    const pixelSize = this.getDataPixelSize_(tile, gutter);
+    styledTile = new StyledTile(tile, pixelSize, revision);
+    this.styledTiles_[uid] = styledTile;
+    // The pixels always arrive later, so the tile is drawn on a following frame.
+    styledTile.addEventListener(EventType.CHANGE, () => layer.changed());
+
+    // cpu.js indexes the data numerically, which a DataView does not support.
+    const values =
+      data instanceof DataView
+        ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+        : data;
+
+    if (!style) {
+      styledTile.convert(values);
+      return styledTile;
+    }
+
+    styledTile.style(this.getProcessor_(), {
+      styleId: revision,
+      style: style,
+      bandCount: getBandCount(values, pixelSize),
+      nodataBandIndex: getSourceNodataBandIndex(
+        /** @type {*} */ (layer.getRenderSource()),
+        frameState.viewState.projection,
+      ),
+      data: values,
+      size: pixelSize,
+      variables: /** @type {import("../../layer/Tile.js").default} */ (
+        rasterLayer
+      ).getStyleVariables(),
+    });
+    return styledTile;
+  }
+
+  /**
+   * Discard the drawable form of a tile's data, cancelling a style job that is still
+   * running for it.
+   * @param {import("../../Tile.js").default} tile The tile.
+   * @private
+   */
+  disposeStyledTile_(tile) {
+    const uid = getUid(tile);
+    const styledTile = this.styledTiles_[uid];
+    if (styledTile) {
+      styledTile.dispose();
+      delete this.styledTiles_[uid];
+    }
+  }
+
+  /**
+   * Start turning a loaded tile's array data into something drawable, if that has not
+   * happened yet.  Tiles with image data need nothing.
+   * @param {import("../../Tile.js").default} tile The tile.
+   * @param {number} gutter The tile gutter.
+   * @param {import("../../Map.js").FrameState} frameState Frame state.
+   * @private
+   */
+  prepareTile_(tile, gutter, frameState) {
+    if (!(tile instanceof DataTile)) {
+      return;
+    }
+    const data = tile.getData();
+    if (!data) {
+      return;
+    }
+    const arrayData = asArrayLike(data);
+    if (arrayData) {
+      this.getStyledTile_(tile, arrayData, gutter, frameState);
+    }
+  }
+
+  /**
+   * Whether a tile has been loaded and, for data tiles, turned into something drawable.
+   * A tile whose style is still running must not count as covering an area, or the
+   * fallback beneath it is dropped and nothing is drawn.
+   * @param {import("../../Tile.js").default} tile The tile.
+   * @return {boolean} The tile can be drawn.
+   * @protected
+   */
+  isDrawable(tile) {
+    if (tile.getState() !== TileState.LOADED) {
+      return false;
+    }
+    if (!(tile instanceof DataTile)) {
+      return true;
+    }
+    const data = tile.getData();
+    if (!data || asImageLike(data)) {
+      return true;
+    }
+    const styledTile = this.styledTiles_[getUid(tile)];
+    return !!styledTile && styledTile.ready;
   }
 
   /**
@@ -290,7 +501,7 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
 
   /**
    * @param {import("../../pixel.js").Pixel} pixel Pixel.
-   * @return {Uint8ClampedArray|null} Data at the pixel location.
+   * @return {Uint8ClampedArray|Uint8Array|Float32Array|DataView|null} Data at the pixel location.
    * @override
    */
   getData(pixel) {
@@ -339,15 +550,22 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
        * @type {import('../../DataTile.js').ImageLike|null}
        */
       let image = null;
+      /**
+       * @type {import('../../DataTile.js').ArrayLike|null}
+       */
+      let arrayData = null;
       if (tile instanceof ImageTile || tile instanceof ReprojTile) {
         image = tile.getImage();
       } else if (tile instanceof DataTile) {
         const data = tile.getData();
         if (data) {
           image = asImageLike(data);
+          if (!image) {
+            arrayData = asArrayLike(data);
+          }
         }
       }
-      if (!image) {
+      if (!image && !arrayData) {
         continue;
       }
 
@@ -367,7 +585,32 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
         tilePixelRatio * source.getGutterForProjection(viewState.projection),
       );
 
-      return this.getImageData(image, col + gutter, row + gutter);
+      if (arrayData) {
+        // Report the tile's own band values, unstyled, as the WebGL renderer does.
+        const pixelSize = this.getDataPixelSize_(
+          /** @type {DataTile} */ (tile),
+          gutter,
+        );
+        const bandCount = getBandCount(arrayData, pixelSize);
+        const offset =
+          bandCount * ((row + gutter) * pixelSize[0] + (col + gutter));
+        if (arrayData instanceof DataView) {
+          const bytesPerPixel =
+            arrayData.byteLength / (pixelSize[0] * pixelSize[1]);
+          const start =
+            arrayData.byteOffset + offset * (bytesPerPixel / bandCount);
+          return new DataView(
+            arrayData.buffer.slice(start, start + bytesPerPixel),
+          );
+        }
+        return arrayData.slice(offset, offset + bandCount);
+      }
+
+      return this.getImageData(
+        /** @type {import('../../DataTile.js').ImageLike} */ (image),
+        col + gutter,
+        row + gutter,
+      );
     }
 
     return null;
@@ -529,7 +772,7 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
       const cacheKey = getCacheKey(layerSource, staleKeys[i], z, x, y);
       if (tileCache.containsKey(cacheKey)) {
         const tile = tileCache.peek(cacheKey);
-        if (tile && tile.getState() === TileState.LOADED) {
+        if (tile && this.isDrawable(tile)) {
           tile.endTransition(getUid(this));
           addTileToLookup(tilesByZ, tile, z);
           return true;
@@ -573,7 +816,7 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
         let loaded = false;
         if (tileCache.containsKey(cacheKey)) {
           const tile = tileCache.peek(cacheKey);
-          if (tile && tile.getState() === TileState.LOADED) {
+          if (tile && this.isDrawable(tile)) {
             addTileToLookup(tilesByZ, tile, altZ);
             loaded = true;
           }
@@ -602,6 +845,7 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
    */
   renderFrame(frameState, target) {
     this.renderComplete = true;
+    this.ready = true;
     /**
      * TODO:
      *  maybe skip transition when not fully opaque
@@ -704,6 +948,8 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
 
     const uid = getUid(this);
     const time = frameState.time;
+    const tileGutter =
+      tilePixelRatio * tileSource.getGutterForProjection(projection);
 
     // look for cached tiles to use if a target tile is not ready
     for (const tile of tilesByZ[z]) {
@@ -713,7 +959,18 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
       }
       const tileCoord = tile.tileCoord;
 
+      // Start converting or styling the tile's data, so that `isDrawable` below has
+      // something to report on and a styled tile is not left waiting to be asked for.
       if (tileState === TileState.LOADED) {
+        this.prepareTile_(tile, tileGutter, frameState);
+        if (!this.isDrawable(tile)) {
+          // A style is still running for this tile.  Hold `ready` so that the map does
+          // not report itself finished with a tile still to be drawn.
+          this.ready = false;
+        }
+      }
+
+      if (this.isDrawable(tile)) {
         const alpha = tile.getAlpha(uid, time);
         if (alpha === 1) {
           // no need to look for alt tiles
@@ -826,10 +1083,8 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
         (tilePixelRatio * (canvasExtent[3] - originTileExtent[3])) /
           tileResolution,
       ]);
-      const tileGutter =
-        tilePixelRatio * tileSource.getGutterForProjection(projection);
       for (const tile of tilesByZ[currentZ]) {
-        if (tile.getState() !== TileState.LOADED) {
+        if (!this.isDrawable(tile)) {
           continue;
         }
         const tileCoord = tile.tileCoord;
@@ -968,7 +1223,11 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
       }
       image = asImageLike(data);
       if (!image) {
-        throw new Error('Rendering array data is not yet supported');
+        const arrayData = asArrayLike(data);
+        if (!arrayData) {
+          return;
+        }
+        image = this.getStyledTile_(tile, arrayData, gutter, frameState).image;
       }
     } else {
       image = this.getTileImage(
@@ -1068,6 +1327,21 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
       usedTiles[tileSourceKey] = {};
     }
     usedTiles[tileSourceKey][tile.getKey()] = true;
+  }
+
+  /**
+   * @override
+   */
+  disposeInternal() {
+    for (const uid in this.styledTiles_) {
+      this.styledTiles_[uid].dispose();
+    }
+    this.styledTiles_ = {};
+    if (this.processor_) {
+      releaseProcessor();
+      this.processor_ = null;
+    }
+    super.disposeInternal();
   }
 }
 
