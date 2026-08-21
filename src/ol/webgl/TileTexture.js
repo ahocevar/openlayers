@@ -2,7 +2,7 @@
  * @module ol/webgl/TileTexture
  */
 
-import DataTile, {asArrayLike, asImageLike} from '../DataTile.js';
+import DataTile, {asArrayLike, asImageLike, getBandCount} from '../DataTile.js';
 import ImageTile from '../ImageTile.js';
 import {createCanvasContext2D} from '../dom.js';
 import ReprojTile from '../reproj/Tile.js';
@@ -256,7 +256,7 @@ class TileTexture extends BaseTileRepresentation {
     const arrayLike = /** @type {import("../DataTile.js").ArrayLike} */ (data);
     const bytesPerRow = arrayLike.byteLength / pixelSize[1];
 
-    this.bandCount = Math.floor(bytesPerRow / bytesPerElement / pixelSize[0]);
+    this.bandCount = getBandCount(arrayLike, pixelSize);
     const textureCount = Math.ceil(this.bandCount / 4);
 
     if (textureCount === 1) {

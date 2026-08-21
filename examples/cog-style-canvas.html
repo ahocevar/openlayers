@@ -1,0 +1,20 @@
+---
+layout: example.html
+title: Change Tile Layer Style (Canvas)
+shortdesc: Updating the style of a canvas tile layer
+docs: >
+  A `ol/layer/Tile` layer accepts the same raster style object as `ol/layer/WebGLTile`, with
+  band expressions, palettes and color ramps.  The style is applied on a worker, one job per
+  tile, and the result is cached, so panning and zooming do not run it again.  Use
+  `layer.updateStyleVariables()` when only values change, and `layer.setStyle()` when the
+  whole style is replaced.
+tags: "cog, geotiff, style, canvas"
+---
+<div id="map" class="map"></div>
+Set the layer style
+<select id="style">
+  <option value="trueColor">True Color</option>
+  <option value="falseColor">False Color</option>
+  <option value="ndvi">NDVI</option>
+  <option value="ndviPalette">NDVI w/ palette</option>
+</select>

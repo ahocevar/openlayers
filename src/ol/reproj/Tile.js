@@ -129,6 +129,12 @@ class ReprojTile extends Tile {
 
     /**
      * @private
+     * @type {boolean}
+     */
+    this.refreshing_ = false;
+
+    /**
+     * @private
      * @type {number}
      */
     this.sourceZ_ = 0;
@@ -278,6 +284,30 @@ class ReprojTile extends Tile {
   }
 
   /**
+   * Whether the pixels are being made again.  The ones from before are still here until
+   * the new ones are.
+   * @return {boolean} A render is pending.
+   */
+  get refreshing() {
+    return this.refreshing_;
+  }
+
+  /**
+   * Render again, from source tiles that have changed since this tile was rendered.  The
+   * canvas is only replaced once the new one is ready, so this tile stays drawable
+   * throughout, and its state does not change.
+   */
+  refresh() {
+    if (this.state !== TileState.LOADED) {
+      return;
+    }
+    this.unlistenSources_();
+    this.refreshing_ = true;
+    this.resolveSources_();
+    this.loadSources_();
+  }
+
+  /**
    * @private
    */
   reproject_() {
@@ -304,10 +334,17 @@ class ReprojTile extends Tile {
           image: image,
         });
       }
+      // let the tile go, but keep the getter, so this one can render again
+      source.tile = undefined;
     });
-    this.sourceTiles_.length = 0;
+    this.refreshing_ = false;
 
     if (sources.length === 0) {
+      if (this.canvas_) {
+        // nothing to render from, so what is here already stays
+        this.changed();
+        return;
+      }
       this.state = TileState.ERROR;
     } else {
       const z = this.wrappedTileCoord_[0];
@@ -348,60 +385,75 @@ class ReprojTile extends Tile {
    * @override
    */
   load() {
-    for (const sourceTile of this.sourceTiles_) {
-      sourceTile.tile = sourceTile.getTile();
-    }
     if (this.state == TileState.IDLE) {
       this.state = TileState.LOADING;
       this.changed();
+      this.resolveSources_();
+      this.loadSources_();
+    }
+  }
 
-      let leftToLoad = 0;
+  /**
+   * Ask for the source tiles this one is made from.
+   * @private
+   */
+  resolveSources_() {
+    for (const sourceTile of this.sourceTiles_) {
+      sourceTile.tile = sourceTile.getTile();
+    }
+  }
 
-      this.sourcesListenerKeys_ = [];
-      this.sourceTiles_.forEach((sourceTile) => {
+  /**
+   * Render once every source tile has settled, loading the ones that have not started.
+   * @private
+   */
+  loadSources_() {
+    let leftToLoad = 0;
+
+    this.sourcesListenerKeys_ = [];
+    this.sourceTiles_.forEach((sourceTile) => {
+      const tile = sourceTile.tile;
+      if (!tile) {
+        return;
+      }
+      const state = tile.getState();
+      if (state == TileState.IDLE || state == TileState.LOADING) {
+        leftToLoad++;
+
+        const sourceListenKey = listen(tile, EventType.CHANGE, () => {
+          const state = tile.getState();
+          if (
+            state == TileState.LOADED ||
+            state == TileState.ERROR ||
+            state == TileState.EMPTY
+          ) {
+            unlistenByKey(sourceListenKey);
+            leftToLoad--;
+            if (leftToLoad === 0) {
+              this.unlistenSources_();
+              this.reproject_();
+            }
+          }
+        });
+        /** @type {!Array<import("../events.js").EventsKey>} */ (
+          this.sourcesListenerKeys_
+        ).push(sourceListenKey);
+      }
+    });
+
+    if (leftToLoad === 0) {
+      setTimeout(this.reproject_.bind(this), 0);
+    } else {
+      this.sourceTiles_.forEach(function (sourceTile) {
         const tile = sourceTile.tile;
         if (!tile) {
           return;
         }
         const state = tile.getState();
-        if (state == TileState.IDLE || state == TileState.LOADING) {
-          leftToLoad++;
-
-          const sourceListenKey = listen(tile, EventType.CHANGE, () => {
-            const state = tile.getState();
-            if (
-              state == TileState.LOADED ||
-              state == TileState.ERROR ||
-              state == TileState.EMPTY
-            ) {
-              unlistenByKey(sourceListenKey);
-              leftToLoad--;
-              if (leftToLoad === 0) {
-                this.unlistenSources_();
-                this.reproject_();
-              }
-            }
-          });
-          /** @type {!Array<import("../events.js").EventsKey>} */ (
-            this.sourcesListenerKeys_
-          ).push(sourceListenKey);
+        if (state == TileState.IDLE) {
+          tile.load();
         }
       });
-
-      if (leftToLoad === 0) {
-        setTimeout(this.reproject_.bind(this), 0);
-      } else {
-        this.sourceTiles_.forEach(function (sourceTile) {
-          const tile = sourceTile.tile;
-          if (!tile) {
-            return;
-          }
-          const state = tile.getState();
-          if (state == TileState.IDLE) {
-            tile.load();
-          }
-        });
-      }
     }
   }
 

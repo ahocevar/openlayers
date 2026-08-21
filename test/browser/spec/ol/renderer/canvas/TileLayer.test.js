@@ -3,9 +3,12 @@ import Map from '../../../../../../src/ol/Map.js';
 import View from '../../../../../../src/ol/View.js';
 import TileLayer from '../../../../../../src/ol/layer/Tile.js';
 import {fromLonLat} from '../../../../../../src/ol/proj.js';
+import ReprojTile from '../../../../../../src/ol/reproj/Tile.js';
+import DataTileSource from '../../../../../../src/ol/source/DataTile.js';
 import ImageTile from '../../../../../../src/ol/source/ImageTile.js';
 import TileDebug from '../../../../../../src/ol/source/TileDebug.js';
 import XYZ from '../../../../../../src/ol/source/XYZ.js';
+import {getUid} from '../../../../../../src/ol/util.js';
 
 describe('ol/renderer/canvas/TileLayer', function () {
   describe('#renderFrame', function () {
@@ -184,6 +187,228 @@ describe('ol/renderer/canvas/TileLayer', function () {
         map.addLayer(layer);
         await new Promise((resolve) => map.once('rendercomplete', resolve));
         assert.strictEqual(layer.getRenderer().sourceTileCache_, null);
+      });
+    });
+  });
+
+  describe('data tiles', function () {
+    let map, layer;
+
+    /**
+     * @param {Object} options Options.
+     * @param {number} [options.bandCount] Bands per pixel, for array data.
+     * @param {Array<number>} [options.pixel] The band values every pixel gets.
+     * @param {boolean} [options.image] Load image data instead of array data.
+     * @param {Object} [options.style] The raster style.
+     * @param {string} [options.projection] The source projection, to render reprojected.
+     */
+    function createMap(options) {
+      const bandCount = options.bandCount || 1;
+      const pixel = options.pixel || [200];
+      layer = new TileLayer({
+        style: options.style,
+        source: new DataTileSource({
+          bandCount: bandCount,
+          maxZoom: 0,
+          transition: 0,
+          projection: options.projection,
+          loader: function () {
+            if (options.image) {
+              const rgba = new Uint8ClampedArray(256 * 256 * 4);
+              for (let i = 0; i < 256 * 256; ++i) {
+                rgba.set(pixel, i * 4);
+              }
+              return createImageBitmap(new ImageData(rgba, 256, 256));
+            }
+            const data = new Uint8Array(256 * 256 * bandCount);
+            for (let i = 0, ii = 256 * 256; i < ii; ++i) {
+              data.set(pixel, i * bandCount);
+            }
+            return data;
+          },
+        }),
+      });
+      map = new Map({
+        target: createMapDiv(100, 100),
+        layers: [layer],
+        view: new View({center: [0, 0], zoom: 0}),
+      });
+    }
+
+    /**
+     * @return {Promise<Uint8ClampedArray>} The center pixel once rendering is done.
+     */
+    function rendered() {
+      // The renderer holds `ready` until the style has been applied, so
+      // rendercomplete already waits for the worker.
+      return new Promise((resolve) => {
+        map.once('rendercomplete', () => {
+          resolve(
+            layer
+              .getRenderer()
+              .getImage()
+              .getContext('2d')
+              .getImageData(50, 50, 1, 1).data,
+          );
+        });
+      });
+    }
+
+    afterEach(function () {
+      disposeMap(map);
+    });
+
+    it('reports band values from getData()', async () => {
+      createMap({bandCount: 3, pixel: [10, 20, 30]});
+      await rendered();
+      const data = layer.getData([50, 50]);
+      assert.instanceOf(data, Uint8Array);
+      assert.deepEqual(Array.from(data), [10, 20, 30]);
+    });
+
+    it('reports band values from getData(), not styled ones', async () => {
+      createMap({style: {color: ['array', ['band', 1], 0, 0, 1]}});
+      await rendered();
+      assert.deepEqual(Array.from(layer.getData([50, 50])), [200]);
+    });
+
+    it('reports the rgba of image data from getData()', async () => {
+      createMap({
+        image: true,
+        pixel: [10, 20, 30, 255],
+        style: {color: ['array', ['band', 3], ['band', 2], ['band', 1], 1]},
+      });
+      await rendered();
+      assert.deepEqual(Array.from(layer.getData([50, 50])), [10, 20, 30, 255]);
+    });
+
+    it('re-renders with new style variables', async () => {
+      createMap({
+        pixel: [255],
+        style: {
+          variables: {red: 1},
+          color: ['array', ['var', 'red'], 0, 0, 1],
+        },
+      });
+      let data = await rendered();
+      assert.deepEqual(Array.from(data), [255, 0, 0, 255]);
+
+      layer.updateStyleVariables({red: 100 / 255});
+      data = await rendered();
+      assert.deepEqual(Array.from(data), [100, 0, 0, 255]);
+    });
+
+    it('keeps drawing the previous style while a new one is applied', async () => {
+      createMap({
+        pixel: [255],
+        style: {
+          variables: {red: 1},
+          color: ['array', ['var', 'red'], 0, 0, 1],
+        },
+      });
+      await rendered();
+
+      const renderer = layer.getRenderer();
+      const tile = renderer.tileCache_.peekLast();
+      const styledTile = renderer.styledTileCache_.peek(getUid(tile));
+      const image = styledTile.getImage();
+
+      layer.updateStyleVariables({red: 100 / 255});
+      map.renderSync();
+
+      assert.strictEqual(
+        renderer.styledTileCache_.peek(getUid(tile)),
+        styledTile,
+      );
+      assert.isFalse(styledTile.ready);
+      assert.isTrue(styledTile.drawable);
+      assert.strictEqual(styledTile.getImage(), image);
+      assert.isTrue(renderer.isDrawable(tile));
+    });
+
+    it('discards the styled tile when its cache drops it', async () => {
+      createMap({style: {color: ['array', ['band', 1], 0, 0, 1]}});
+      await rendered();
+
+      const renderer = layer.getRenderer();
+      const tile = renderer.tileCache_.peekLast();
+      const styledTile = renderer.styledTileCache_.peek(getUid(tile));
+      assert.isDefined(styledTile);
+
+      renderer.styledTileCache_.clear();
+      assert.isUndefined(renderer.styledTileCache_.peek(getUid(tile)));
+      assert.isNull(styledTile.getImage());
+    });
+
+    it('throws for a style with a missing variable', function () {
+      assert.throws(
+        () => new TileLayer({style: {color: ['var', 'missing']}}),
+        /Missing 'missing' in style variables/,
+      );
+    });
+
+    describe('reprojected', function () {
+      it('warps images made from the source projection tiles', async () => {
+        createMap({
+          projection: 'EPSG:4326',
+          style: {color: ['array', ['band', 1], 0, 0, 1]},
+        });
+        await rendered();
+
+        const renderer = layer.getRenderer();
+        assert.instanceOf(renderer.tileCache_.peekLast(), ReprojTile);
+        const sourceTile = renderer.sourceTileCache_.peekLast();
+        assert.isDefined(renderer.styledTileCache_.peek(getUid(sourceTile)));
+      });
+
+      it('appends no coverage band, so getData() reports the source bands', async () => {
+        createMap({
+          bandCount: 3,
+          pixel: [10, 20, 30],
+          projection: 'EPSG:4326',
+        });
+        await rendered();
+        assert.instanceOf(
+          layer.getRenderer().tileCache_.peekLast(),
+          ReprojTile,
+        );
+        assert.deepEqual(Array.from(layer.getData([50, 50])), [10, 20, 30]);
+      });
+
+      it('reports band values from getData(), not styled ones', async () => {
+        createMap({
+          projection: 'EPSG:4326',
+          style: {color: ['array', ['band', 1], 0, 0, 1]},
+        });
+        await rendered();
+        assert.deepEqual(Array.from(layer.getData([50, 50])), [200]);
+      });
+
+      it('keeps drawing the previous style while warping again', async () => {
+        createMap({
+          pixel: [255],
+          projection: 'EPSG:4326',
+          style: {
+            variables: {red: 1},
+            color: ['array', ['var', 'red'], 0, 0, 1],
+          },
+        });
+        await rendered();
+
+        const renderer = layer.getRenderer();
+        const tile = renderer.tileCache_.peekLast();
+        const image = tile.getImage();
+
+        layer.updateStyleVariables({red: 100 / 255});
+        map.renderSync();
+
+        assert.strictEqual(renderer.tileCache_.peekLast(), tile);
+        assert.isTrue(tile.refreshing);
+        assert.strictEqual(tile.getImage(), image);
+        assert.isTrue(renderer.isDrawable(tile));
+
+        const data = await rendered();
+        assert.deepEqual(Array.from(data), [100, 0, 0, 255]);
       });
     });
   });
