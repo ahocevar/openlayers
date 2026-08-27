@@ -1,8 +1,11 @@
 import {assert} from 'chai';
 import {describe, it} from 'vitest';
+import {newRasterEvaluationContext} from '../../../../src/ol/expr/cpu.js';
 import {
+  compileStyle,
   compileStyleToFunction,
   compileStyleToSource,
+  render as renderPipeline,
 } from '../../../../src/ol/raster/pipeline.js';
 
 /**
@@ -221,6 +224,60 @@ describe('ol/raster/pipeline.js', () => {
         }),
         [255, 0, 0, 255],
       );
+    });
+  });
+
+  describe('render()', () => {
+    /**
+     * Render by walking the closure tree, the way the main thread fallback does.
+     * @param {import('../../../../src/ol/style/raster.js').RasterStyle} style The style.
+     * @param {number} bandCount The number of bands per pixel.
+     * @param {Options} options The tile and how to read it.
+     * @return {Array<number>} Red, green, blue and alpha for every pixel.
+     */
+    function interpret(style, bandCount, options) {
+      const context = newRasterEvaluationContext();
+      context.data = options.data;
+      context.size = options.size || [1, 1];
+      context.bandCount = bandCount;
+      context.bandScale =
+        options.bandScale === undefined ? 1 : options.bandScale;
+      context.variables = options.variables || style.variables || {};
+      context.resolution =
+        options.resolution === undefined ? NaN : options.resolution;
+      return Array.from(
+        renderPipeline(
+          compileStyle(style, bandCount, options.nodataBandIndex),
+          context,
+        ),
+      );
+    }
+
+    it('renders what the emitted loop renders', () => {
+      // the fallback has to agree with the worker, or a policy would change the map
+      const style = {
+        color: [
+          'interpolate',
+          ['linear'],
+          ['band', 1],
+          0,
+          [255, 0, 0, 1],
+          1,
+          [0, 0, 255, 1],
+        ],
+        gamma: 1.5,
+      };
+      const options = {data: new Float32Array([0, 0.25, 0.5, 1]), size: [2, 2]};
+      assert.deepEqual(interpret(style, 1, options), render(style, 1, options));
+    });
+
+    it('discards the pixels the emitted loop discards', () => {
+      const options = {
+        data: new Float32Array([0.5, 0, 0.5, 1]),
+        size: [2, 1],
+        nodataBandIndex: 2,
+      };
+      assert.deepEqual(interpret({}, 2, options), render({}, 2, options));
     });
   });
 });

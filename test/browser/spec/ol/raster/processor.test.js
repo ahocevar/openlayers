@@ -1,5 +1,7 @@
 import {assert} from 'chai';
+import Processor from '../../../../../src/ol/Processor.js';
 import {createCanvasContext2D} from '../../../../../src/ol/dom.js';
+import {createFallbackWorker} from '../../../../../src/ol/raster/fallback.js';
 import {
   dropLayerHandlers,
   ensureHandler,
@@ -91,6 +93,33 @@ describe('ol/raster/processor', () => {
     const reply = await postStyleJob(getStyleProcessor(), styleId);
 
     assert.deepEqual(toPixels(reply.bitmap), [0, 0, 0, 255, 255, 0, 0, 255]);
+  });
+
+  it('renders on the main thread what the worker renders', async () => {
+    // where a policy refuses the generated worker, the same jobs are interpreted here
+    setWorkerCount(1);
+    const style = {color: ['array', ['band', 1], 0, 0, 1], gamma: 1.5};
+    const styleId = ensureHandler('layer-a/1', style, 1, undefined);
+    const fallback = new Processor({
+      threads: 1,
+      queue: Infinity,
+      createWorker: () =>
+        createFallbackWorker({
+          [styleId]: {
+            source: '',
+            style: style,
+            bandCount: 1,
+            nodataBandIndex: undefined,
+          },
+        }),
+    });
+
+    const [worker, mainThread] = await Promise.all([
+      postStyleJob(getStyleProcessor(), styleId),
+      postStyleJob(fallback, styleId),
+    ]);
+    assert.deepEqual(toPixels(mainThread.bitmap), toPixels(worker.bitmap));
+    fallback.dispose();
   });
 });
 

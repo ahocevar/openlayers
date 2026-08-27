@@ -2,6 +2,8 @@
  * @module ol/raster/processor
  */
 import Processor from '../Processor.js';
+import {warn} from '../console.js';
+import {createFallbackWorker} from './fallback.js';
 import {compileStyleToSource} from './pipeline.js';
 import {buildWorkerSource, createWorker} from './workerSource.js';
 
@@ -36,11 +38,22 @@ export function getWorkerCount() {
 }
 
 /**
- * Compiled render source by handler id.  A handler is specific to a style *and* to the band
- * layout it was compiled for, because the band count is baked into the emitted loop.  The
- * layout is only known once a tile's data has arrived, so handlers are registered on first
- * use rather than when the style is set.
- * @type {Object<string, string>}
+ * A style compiled for one band layout.  The style itself is kept beside the source, because
+ * {@link module:ol/raster/fallback} needs the style rather than the source.
+ *
+ * @typedef {Object} Handler
+ * @property {string} source The render function source, baked into the worker.
+ * @property {import('../style/raster.js').RasterStyle} style The style it was compiled from.
+ * @property {number} bandCount The number of bands per pixel.
+ * @property {number|undefined} nodataBandIndex The 1-based nodata band index.
+ */
+
+/**
+ * Compiled handlers by id.  A handler is specific to a style *and* to the band layout it was
+ * compiled for, because the band count is baked into the emitted loop.  The layout is only
+ * known once a tile's data has arrived, so handlers are registered on first use rather than
+ * when the style is set.
+ * @type {Object<string, Handler>}
  */
 const handlers = {};
 
@@ -50,6 +63,14 @@ const handlers = {};
  * @type {Processor|null}
  */
 let styleProcessor = null;
+
+/**
+ * Whether generated workers have been given up on, which is for good: what stops one from
+ * starting is a content security policy or a bug in the emitter, and neither changes while
+ * the page lives.
+ * @type {boolean}
+ */
+let workersRefused = false;
 
 /**
  * @param {string} styleId Identifies the style, as `layerUid/styleRevision`.
@@ -71,6 +92,25 @@ function dropStyleProcessor() {
   const previous = styleProcessor;
   styleProcessor = null;
   previous?.abandon();
+}
+
+/**
+ * Give up on generated workers and drop the pool holding them, so that every job it was
+ * carrying is asked for again — on the fallback pool the next {@link getStyleProcessor}
+ * builds.  Deciding this late is what it takes: a worker that a policy refuses reports it
+ * only once the jobs are already on their way to it.
+ *
+ * @param {string} reason Why the worker cannot be used.
+ */
+function useFallback(reason) {
+  if (workersRefused) {
+    return;
+  }
+  workersRefused = true;
+  warn(
+    `Cannot run raster styles in a worker, so they are applied on the main thread instead: ${reason}`,
+  );
+  dropStyleProcessor();
 }
 
 /**
@@ -138,7 +178,12 @@ export function ensureHandler(styleId, style, bandCount, nodataBandIndex) {
   // layouts it was compiled for
   dropMatching(styleId.slice(0, styleId.indexOf('/') + 1), `${styleId}/`);
 
-  handlers[id] = source;
+  handlers[id] = {
+    source: source,
+    style: style,
+    bandCount: bandCount,
+    nodataBandIndex: nodataBandIndex,
+  };
   dropStyleProcessor();
   return id;
 }
@@ -160,16 +205,45 @@ export function dropLayerHandlers(layerUid) {
  * @return {Processor} The processor.
  */
 export function getStyleProcessor() {
-  if (!styleProcessor) {
-    const source = buildWorkerSource(handlers);
-    styleProcessor = new Processor({
-      threads: workerCount,
-      queue: Infinity,
-      createWorker: () =>
-        /** @type {import("../Processor.js").WorkerLike} */ (
-          /** @type {*} */ (createWorker(source))
-        ),
-    });
+  if (styleProcessor) {
+    return styleProcessor;
   }
+  if (!workersRefused) {
+    /** @type {Object<string, string>} */
+    const sources = {};
+    for (const id in handlers) {
+      sources[id] = handlers[id].source;
+    }
+    const source = buildWorkerSource(sources);
+    try {
+      styleProcessor = new Processor({
+        threads: workerCount,
+        queue: Infinity,
+        createWorker: () => {
+          const worker = createWorker(source);
+          // A policy that forbids `blob:` worker urls does not make the line above throw: the
+          // url is simply never loaded, and the worker says so with an error event carrying
+          // nothing.  A worker that fails to start for any other reason says the same thing
+          // and needs the same answer, since either way it will never answer a job.
+          worker.onerror = () => useFallback('the worker did not start');
+          return /** @type {import("../Processor.js").WorkerLike} */ (
+            /** @type {*} */ (worker)
+          );
+        },
+      });
+      return styleProcessor;
+    } catch (error) {
+      // where a policy is enforced by refusing the url outright.  The first worker is the one
+      // refused, so the pool is never left holding any that would need terminating here.
+      useFallback(/** @type {Error} */ (error).message);
+    }
+  }
+  styleProcessor = new Processor({
+    // the fallback renders on the main thread, so a second one of it would only take turns
+    // with the first
+    threads: 1,
+    queue: Infinity,
+    createWorker: () => createFallbackWorker(handlers),
+  });
   return styleProcessor;
 }

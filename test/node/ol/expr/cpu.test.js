@@ -2,6 +2,7 @@ import {assert} from 'chai';
 import {
   buildExpression,
   newEvaluationContext,
+  newRasterEvaluationContext,
 } from '../../../../src/ol/expr/cpu.js';
 import {
   BooleanType,
@@ -903,6 +904,94 @@ describe('ol/expr/cpu.js', () => {
       });
     }
   });
+  describe('raster expressions', () => {
+    /**
+     * A 2 by 2 tile with two bands: a value and an alpha.
+     * @return {import('../../../../src/ol/expr/cpu.js').EvaluationContext} The context.
+     */
+    function createContext() {
+      const context = newRasterEvaluationContext();
+      context.data = new Uint8Array([0, 255, 128, 255, 255, 0, 64, 255]);
+      context.size = [2, 2];
+      context.bandCount = 2;
+      context.bandScale = 1 / 255;
+      return context;
+    }
+
+    it('normalizes integer band values to the 0 to 1 range', () => {
+      const context = createContext();
+      const evaluator = buildExpression(
+        ['band', 1],
+        NumberType,
+        newParsingContext(),
+      );
+      const values = [];
+      for (context.row = 0; context.row < 2; ++context.row) {
+        for (context.col = 0; context.col < 2; ++context.col) {
+          values.push(evaluator(context));
+        }
+      }
+      assert.deepEqual(values, [0, 128 / 255, 1, 64 / 255]);
+    });
+
+    it('passes float band values through unscaled', () => {
+      const context = createContext();
+      context.data = new Float32Array([0.25, 1]);
+      context.size = [1, 1];
+      context.bandScale = 1;
+      const evaluator = buildExpression(
+        ['band', 1],
+        NumberType,
+        newParsingContext(),
+      );
+      assert.strictEqual(evaluator(context), 0.25);
+    });
+
+    it('reads a neighbouring pixel at an offset', () => {
+      const context = createContext();
+      const evaluator = buildExpression(
+        ['band', 1, 1, 0],
+        NumberType,
+        newParsingContext(),
+      );
+      assert.strictEqual(evaluator(context), 128 / 255);
+    });
+
+    it('clamps offsets to the edge of the tile', () => {
+      const context = createContext();
+      const evaluator = buildExpression(
+        ['band', 1, -1, 0],
+        NumberType,
+        newParsingContext(),
+      );
+      assert.strictEqual(evaluator(context), 0);
+    });
+
+    it('looks colors up in a palette, clamping the index', () => {
+      const context = createContext();
+      const evaluator = buildExpression(
+        [
+          'palette',
+          ['*', ['band', 1], 3],
+          [
+            [255, 0, 0],
+            [0, 255, 0],
+            [0, 0, 255],
+          ],
+        ],
+        ColorType,
+        newParsingContext(),
+      );
+      assert.deepEqual(evaluator(context), [255, 0, 0, 1]);
+      context.col = 1;
+      assert.deepEqual(evaluator(context), [0, 255, 0, 1]);
+      // band 1 is 1 here, so the index is past the end of the palette
+      context.row = 1;
+      context.col = 0;
+      assert.deepEqual(evaluator(context), [0, 0, 255, 1]);
+    });
+  });
+
   describe('array and color expressions', () => {
     it('assembles colors from numbers', () => {
       const context = newEvaluationContext();

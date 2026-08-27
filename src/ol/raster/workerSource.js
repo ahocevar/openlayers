@@ -8,10 +8,11 @@
  * source is baked into the worker, which is then created from a Blob.
  *
  * Generating a whole worker rather than passing source to `new Function` inside a fixed worker
- * is deliberate: creating a worker from a Blob needs `worker-src blob:`, which this renderer
- * already requires, while `new Function` would additionally need `script-src 'unsafe-eval'` —
- * a far harder thing to get past a content security policy.  It also keeps the expression
- * compiler out of the worker payload, since only the emitted loop is shipped.
+ * is deliberate: creating a worker from a Blob needs `worker-src blob:`, which every worker in
+ * the library already needs, while `new Function` would additionally need
+ * `script-src 'unsafe-eval'` — a far harder thing to get past a content security policy.  It
+ * also keeps the expression compiler out of the worker payload, since only the emitted loop is
+ * shipped.  A policy that grants neither leaves {@link module:ol/raster/fallback}.
  *
  * Because the style is baked in, one worker serves a fixed set of styles.  The set is keyed by
  * style id, so a job names the style it wants and the pool is rebuilt only when the set of
