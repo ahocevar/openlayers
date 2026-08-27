@@ -2,7 +2,9 @@ import {assert} from 'chai';
 import DataTile, {
   asArrayLike,
   asImageLike,
+  getBandCount,
   toArray,
+  toImageData,
 } from '../../../../src/ol/DataTile.js';
 import TileState from '../../../../src/ol/TileState.js';
 import {listenOnce} from '../../../../src/ol/events.js';
@@ -164,5 +166,55 @@ describe('ol/DataTile', function () {
           resolve();
         });
       }));
+  });
+  describe('getBandCount()', function () {
+    it('derives the band count from the byte length and size', function () {
+      assert.strictEqual(getBandCount(new Uint8Array(2 * 3 * 4), [2, 3]), 4);
+      assert.strictEqual(getBandCount(new Uint8Array(2 * 3 * 1), [2, 3]), 1);
+      assert.strictEqual(getBandCount(new Float32Array(2 * 3 * 2), [2, 3]), 2);
+    });
+  });
+
+  describe('toImageData()', function () {
+    /**
+     * @param {Array<number>} bands The band values of one or two pixels.
+     * @param {number} bandCount Bands per pixel.
+     * @return {Array<number>} The rgba of every pixel.
+     */
+    function expand(bands, bandCount) {
+      const data = new Uint8Array(bands);
+      const width = bands.length / bandCount;
+      return Array.from(toImageData(data, [width, 1], bandCount).data);
+    }
+
+    it('maps bands onto rgba', function () {
+      // one band is luminance, a second is its alpha, three are rgb, and four or more
+      // are rgba from the first four
+      assert.deepEqual(expand([0, 128], 1), [0, 0, 0, 255, 128, 128, 128, 255]);
+      assert.deepEqual(
+        expand([128, 64, 255, 0], 2),
+        [128, 128, 128, 64, 255, 255, 255, 0],
+      );
+      assert.deepEqual(
+        expand([1, 2, 3, 4, 5, 6], 3),
+        [1, 2, 3, 255, 4, 5, 6, 255],
+      );
+      assert.deepEqual(expand([1, 2, 3, 4, 5, 6], 6), [1, 2, 3, 4]);
+    });
+
+    it('scales float values from 0-1 to 0-255', function () {
+      const data = new Float32Array([0, 0.5, 1, 2]);
+      const imageData = toImageData(data, [2, 2], 1);
+      assert.deepEqual(
+        Array.from(imageData.data.slice(0, 12)),
+        [0, 0, 0, 255, 128, 128, 128, 255, 255, 255, 255, 255],
+      );
+    });
+
+    it('reuses a four band Uint8ClampedArray without copying', function () {
+      const data = new Uint8ClampedArray([1, 2, 3, 4]);
+      const imageData = toImageData(data, [1, 1], 4);
+      assert.strictEqual(imageData.data.buffer, data.buffer);
+    });
   });
 });

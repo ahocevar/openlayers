@@ -24,12 +24,23 @@ import {ColorType, LiteralExpression, Ops, parse} from './expression.js';
  */
 
 /**
+ * The optional properties are only used by raster styles, where `['band', ...]` reads
+ * from tile data.  Use {@link newRasterEvaluationContext} to get a context with them.
+ *
  * @typedef {Object} EvaluationContext
  * @property {Object<string, *>} properties The values for properties used in 'get' expressions.
  * @property {Object<string, *>} variables The values for variables used in 'var' expressions.
  * @property {number} resolution The map resolution.
  * @property {string|number|null} featureId The feature id.
  * @property {string} geometryType Geometry type of the current object.
+ * @property {Uint8Array|Uint8ClampedArray|Float32Array|null} [data] Tile data read by 'band'
+ * expressions.  `DataView` tile data has to be viewed as a typed array first.
+ * @property {import('../size.js').Size} [size] The pixel size of the data, gutter included.
+ * @property {number} [bandCount] The number of bands per pixel in the data.
+ * @property {number} [bandScale] Multiplier applied to raw band values.  Integer data is
+ * normalized to the 0 to 1 range with `1 / 255`; floating point data passes through with `1`.
+ * @property {number} [col] The column of the pixel being evaluated.
+ * @property {number} [row] The row of the pixel being evaluated.
  */
 
 /**
@@ -42,6 +53,26 @@ export function newEvaluationContext() {
     resolution: NaN,
     featureId: null,
     geometryType: '',
+  };
+}
+
+/**
+ * A context for evaluating a raster style over tile data.
+ * @return {EvaluationContext} A new evaluation context.
+ */
+export function newRasterEvaluationContext() {
+  return {
+    variables: {},
+    properties: {},
+    resolution: NaN,
+    featureId: null,
+    geometryType: '',
+    data: null,
+    size: [0, 0],
+    bandCount: 0,
+    bandScale: 1,
+    col: 0,
+    row: 0,
   };
 }
 
@@ -187,14 +218,18 @@ function compileExpression(expression, context) {
     case Ops.Color: {
       return compileColorExpression(expression, context);
     }
+    case Ops.Band: {
+      return compileBandExpression(expression, context);
+    }
+    case Ops.Palette: {
+      return compilePaletteExpression(expression, context);
+    }
     default: {
       throw new Error(`Unsupported operator ${operator}`);
     }
     // TODO: unimplemented
     // Ops.Zoom
     // Ops.Time
-    // Ops.Band
-    // Ops.Palette
   }
 }
 
@@ -257,6 +292,74 @@ function compileColorExpression(expression, context) {
     args[2](context),
     alpha ? alpha(context) : 1,
   ];
+}
+
+/**
+ * Read a band value from the tile data on the evaluation context.  Offsets address a
+ * neighbouring pixel, clamped to the edge of the tile.
+ *
+ * @param {import('./expression.js').CallExpression} expression The call expression.
+ * @param {import('./expression.js').ParsingContext} context The parsing context.
+ * @return {NumberEvaluator} The evaluator function.
+ */
+function compileBandExpression(expression, context) {
+  const args = expression.args;
+  const bandExpression = compileExpression(args[0], context);
+  const xOffsetExpression =
+    args.length > 1 ? compileExpression(args[1], context) : null;
+  const yOffsetExpression =
+    args.length > 2 ? compileExpression(args[2], context) : null;
+
+  return (context) => {
+    const data = context.data;
+    const size = context.size;
+    if (!data || !size) {
+      throw new Error('Band expressions require a source with array data');
+    }
+    const width = size[0];
+    let col = /** @type {number} */ (context.col);
+    let row = /** @type {number} */ (context.row);
+    if (xOffsetExpression) {
+      col += /** @type {number} */ (xOffsetExpression(context));
+    }
+    if (yOffsetExpression) {
+      row += /** @type {number} */ (yOffsetExpression(context));
+    }
+    col = col < 0 ? 0 : col > width - 1 ? width - 1 : col;
+    const height = size[1];
+    row = row < 0 ? 0 : row > height - 1 ? height - 1 : row;
+
+    const bandCount = /** @type {number} */ (context.bandCount);
+    const band = /** @type {number} */ (bandExpression(context));
+    const offset = (row * width + col) * bandCount + (band - 1);
+    return data[offset] * /** @type {number} */ (context.bandScale);
+  };
+}
+
+/**
+ * @param {import('./expression.js').CallExpression} expression The call expression.
+ * @param {import('./expression.js').ParsingContext} context The parsing context.
+ * @return {ColorLikeEvaluator} The evaluator function.
+ */
+function compilePaletteExpression(expression, context) {
+  const args = expression.args;
+  const indexExpression = compileExpression(args[0], context);
+
+  const count = args.length - 1;
+  const colors = new Array(count);
+  const literalContext = newEvaluationContext();
+  for (let i = 0; i < count; ++i) {
+    colors[i] = withAlpha(
+      /** @type {import('../color.js').Color} */ (
+        compileExpression(args[i + 1], context)(literalContext)
+      ),
+    );
+  }
+
+  return (context) => {
+    const index = Math.floor(/** @type {number} */ (indexExpression(context)));
+    return colors[index < 0 ? 0 : index > count - 1 ? count - 1 : index];
+  };
 }
 
 /**

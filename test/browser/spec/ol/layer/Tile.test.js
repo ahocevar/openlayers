@@ -33,6 +33,55 @@ describe('ol/layer/Tile', function () {
     });
   });
 
+  describe('raster style', function () {
+    let layer;
+
+    beforeEach(function () {
+      layer = new TileLayer({
+        source: new OSM(),
+        style: {variables: {gamma: 1}, gamma: ['var', 'gamma']},
+      });
+    });
+
+    afterEach(function () {
+      layer.dispose();
+    });
+
+    it('moves both revisions when the style is replaced', function () {
+      const style = layer.getStyleRevision();
+      const render = layer.getRenderRevision();
+      layer.setStyle({gamma: 2});
+      assert.strictEqual(layer.getStyleRevision(), style + 1);
+      assert.strictEqual(layer.getRenderRevision(), render + 1);
+    });
+
+    it('leaves the style revision alone when only variables change', function () {
+      const style = layer.getStyleRevision();
+      const render = layer.getRenderRevision();
+      layer.updateStyleVariables({gamma: 1.5});
+      assert.strictEqual(layer.getStyleRevision(), style);
+      assert.strictEqual(layer.getRenderRevision(), render + 1);
+    });
+
+    it('records whether the style reads the resolution', function () {
+      assert.isFalse(layer.getStyleUsesResolution());
+      layer.setStyle({gamma: ['/', 1, ['resolution']]});
+      assert.isTrue(layer.getStyleUsesResolution());
+    });
+
+    it('reports a missing variable only where the style is applied', function () {
+      // the values may arrive after the style is set, so this is only an error once
+      // there are pixels to make
+      layer.setStyle({gamma: ['var', 'missing']});
+      assert.throws(
+        () => layer.getRenderVariables(),
+        /Missing 'missing' in style variables/,
+      );
+      layer.updateStyleVariables({missing: 1.5});
+      assert.strictEqual(layer.getRenderVariables().missing, 1.5);
+    });
+  });
+
   describe('getData()', () => {
     let map, target, layer;
     beforeEach(

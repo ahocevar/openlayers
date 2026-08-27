@@ -1,11 +1,18 @@
 /**
  * @module ol/renderer/canvas/TileLayer
  */
-import DataTile, {asImageLike} from '../../DataTile.js';
+import DataTile, {
+  asArrayLike,
+  asImageLike,
+  getBandCount,
+  getPixelSize,
+} from '../../DataTile.js';
 import ImageTile from '../../ImageTile.js';
 import TileRange from '../../TileRange.js';
 import TileState from '../../TileState.js';
+import ViewHint from '../../ViewHint.js';
 import {ascending} from '../../array.js';
+import EventType from '../../events/EventType.js';
 import {
   containsCoordinate,
   createEmpty,
@@ -17,6 +24,7 @@ import {
   subtractExtents,
 } from '../../extent.js';
 import {equivalent, fromUserExtent} from '../../proj.js';
+import StyledTile from '../../raster/StyledTile.js';
 import ReprojTile from '../../reproj/Tile.js';
 import {toSize} from '../../size.js';
 import LRUCache from '../../structs/LRUCache.js';
@@ -165,6 +173,13 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
     this.renderedSourceRevision_;
 
     /**
+     * The frame being rendered, read by {@link getStyledTileResolution_}.
+     * @type {import("../../Map.js").FrameState|null}
+     * @private
+     */
+    this.frameState_ = null;
+
+    /**
      * @protected
      * @type {import("../../extent.js").Extent}
      */
@@ -202,7 +217,195 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
      */
     this.layerExtent = null;
 
+    /**
+     * Tile data turned into something drawable, keyed by tile uid.  Expired together with
+     * the tile cache, and the same size.
+     * @type {import("../../structs/LRUCache.js").default<StyledTile>}
+     * @private
+     */
+    this.styledTileCache_ = new LRUCache(cacheSize);
+
     this.maxStaleKeys = cacheSize * 0.5;
+  }
+
+  /**
+   * The raster layer being rendered, or null for any other tile layer.
+   * @return {import("../../layer/Tile.js").default|null} The raster layer.
+   * @private
+   */
+  getRasterLayer_() {
+    const layer = this.getLayer();
+    return 'getStyleRevision' in layer
+      ? /** @type {import("../../layer/Tile.js").default} */ (
+          /** @type {*} */ (layer)
+        )
+      : null;
+  }
+
+  /**
+   * The revision of the rendered result, or 0 when there is no style.  This is what decides
+   * whether a tile's pixels are out of date, so it moves when the variables move.
+   * @return {number} The render revision.
+   * @private
+   */
+  getRenderRevision_() {
+    const rasterLayer = this.getRasterLayer_();
+    return rasterLayer?.getStyle() ? rasterLayer.getRenderRevision() : 0;
+  }
+
+  /**
+   * The resolution a tile's style should be applied at.  Following the vector tile renderer's
+   * `wantedResolution`, the view resolution is only adopted when the view has settled and the
+   * tile belongs to the zoom level being rendered.  Otherwise the tile keeps the resolution it
+   * was styled at, and only one that has never been styled falls back to its own grid
+   * resolution.
+   * @param {import("../../Tile.js").default} tile The tile.
+   * @param {number|undefined} styledAt The resolution the tile is already styled at, if any.
+   * @return {number|undefined} The resolution, or undefined when the style does not read it.
+   * @private
+   */
+  getStyledTileResolution_(tile, styledAt) {
+    if (
+      !this.getRasterLayer_()?.getStyleUsesResolution() ||
+      !this.frameState_
+    ) {
+      return undefined;
+    }
+    const frameState = this.frameState_;
+    const viewState = frameState.viewState;
+    const source = this.getLayer().getRenderSource();
+    if (!source) {
+      return undefined;
+    }
+    const tileGrid = source.getTileGridForProjection(viewState.projection);
+    const z = tile.tileCoord[0];
+    const hifi = !(
+      frameState.viewHints[ViewHint.ANIMATING] ||
+      frameState.viewHints[ViewHint.INTERACTING]
+    );
+    const settledOnThisLevel =
+      tileGrid.getZForResolution(
+        viewState.resolution,
+        /** @type {*} */ (source).zDirection,
+      ) === z;
+    if (hifi && settledOnThisLevel) {
+      return viewState.resolution;
+    }
+    return styledAt ?? tileGrid.getResolution(z);
+  }
+
+  /**
+   * How a data tile's data has to be turned into pixels.
+   * @param {number} gutter The tile gutter.
+   * @param {number|undefined} resolution The resolution to apply the style at.
+   * @return {import("../../raster/StyledTile.js").Options} The options.
+   * @private
+   */
+  getStyledTileOptions_(gutter, resolution) {
+    const rasterLayer = this.getRasterLayer_();
+    const style = rasterLayer?.getStyle();
+    if (!rasterLayer || !style) {
+      return {gutter: gutter};
+    }
+    const source = /** @type {*} */ (this.getLayer().getRenderSource());
+    return {
+      gutter: gutter,
+      style: style,
+      resolution: resolution,
+      revision: rasterLayer.getRenderRevision(),
+      // keyed on the style revision alone, so that new variables do not recompile it
+      styleId: getUid(rasterLayer) + '/' + rasterLayer.getStyleRevision(),
+      nodataBandIndex: source ? source.nodataBandIndex : undefined,
+      variables: rasterLayer.getRenderVariables(),
+    };
+  }
+
+  /**
+   * Whether a data tile's data has to go through a {@link module:ol/raster/StyledTile}
+   * before it can be drawn.  Array data always does, to be expanded to rgba.  Image data
+   * only when there is a style, which reads it as four bands of rgba.
+   * @param {import("../../DataTile.js").Data} data The tile data.
+   * @return {boolean} The data has to be converted or styled.
+   * @private
+   */
+  needsStyledTile_(data) {
+    return !!asArrayLike(data) || !!this.getRasterLayer_()?.getStyle();
+  }
+
+  /**
+   * The drawable form of a data tile's data, converting or styling it if this is the
+   * first time it has been asked for at the current style revision.
+   * @param {import("../../DataTile.js").default} tile The tile.
+   * @param {number} gutter The tile gutter.
+   * @return {StyledTile} The styled tile.
+   * @private
+   */
+  getStyledTile_(tile, gutter) {
+    const cache = this.styledTileCache_;
+    const uid = getUid(tile);
+    const cached = cache.containsKey(uid) ? cache.get(uid) : null;
+    // a tile that is already styled keeps that resolution unless the view has settled on it
+    const resolution = this.getStyledTileResolution_(tile, cached?.resolution);
+    if (cached) {
+      if (
+        cached.revision !== this.getRenderRevision_() ||
+        cached.resolution !== resolution
+      ) {
+        cached.restyle(this.getStyledTileOptions_(gutter, resolution));
+      }
+      return cached;
+    }
+
+    const styledTile = new StyledTile(
+      tile,
+      this.getStyledTileOptions_(gutter, resolution),
+    );
+    cache.set(uid, styledTile);
+    // the pixels arrive later, so the tile is drawn on a following frame
+    const layer = this.getLayer();
+    styledTile.addEventListener(EventType.CHANGE, () => layer.changed());
+    styledTile.load();
+    return styledTile;
+  }
+
+  /**
+   * Start turning a loaded tile's data into something drawable, if that has not happened
+   * yet.  Unstyled image data needs nothing.
+   * @param {import("../../Tile.js").default} tile The tile.
+   * @param {number} gutter The tile gutter.
+   * @return {StyledTile|null} The styled tile, if the data needs one.
+   * @private
+   */
+  prepareTile_(tile, gutter) {
+    if (!(tile instanceof DataTile)) {
+      return null;
+    }
+    const data = tile.getData();
+    if (data && this.needsStyledTile_(data)) {
+      return this.getStyledTile_(tile, gutter);
+    }
+    return null;
+  }
+
+  /**
+   * Whether a tile has been loaded and, for data tiles, turned into something drawable.
+   * @param {import("../../Tile.js").default} tile The tile.
+   * @return {boolean} The tile can be drawn.
+   * @protected
+   */
+  isDrawable(tile) {
+    if (tile.getState() !== TileState.LOADED) {
+      return false;
+    }
+    if (!(tile instanceof DataTile)) {
+      return true;
+    }
+    const data = tile.getData();
+    if (!data || !this.needsStyledTile_(data)) {
+      return true;
+    }
+    const styledTile = this.styledTileCache_.peek(getUid(tile));
+    return !!styledTile && styledTile.isDrawable();
   }
 
   /**
@@ -290,7 +493,7 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
 
   /**
    * @param {import("../../pixel.js").Pixel} pixel Pixel.
-   * @return {Uint8ClampedArray|null} Data at the pixel location.
+   * @return {Uint8ClampedArray|Uint8Array|Float32Array|DataView|null} Data at the pixel location.
    * @override
    */
   getData(pixel) {
@@ -317,8 +520,12 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
     if (!source) {
       return null;
     }
+
     const tileGrid = source.getTileGridForProjection(viewState.projection);
     const tilePixelRatio = source.getTilePixelRatio(frameState.pixelRatio);
+    const gutter = Math.round(
+      tilePixelRatio * source.getGutterForProjection(viewState.projection),
+    );
 
     for (
       let z = tileGrid.getZForResolution(viewState.resolution);
@@ -331,46 +538,100 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
         continue;
       }
 
-      const tileOrigin = tileGrid.getOrigin(z);
-      const tileSize = toSize(tileGrid.getTileSize(z));
-      const tileResolution = tileGrid.getResolution(z);
-
-      /**
-       * @type {import('../../DataTile.js').ImageLike|null}
-       */
-      let image = null;
-      if (tile instanceof ImageTile || tile instanceof ReprojTile) {
-        image = tile.getImage();
-      } else if (tile instanceof DataTile) {
-        const data = tile.getData();
-        if (data) {
-          image = asImageLike(data);
-        }
+      const data = this.readTileData_(
+        tile,
+        tileGrid,
+        tileCoord,
+        coordinate,
+        tilePixelRatio,
+        gutter,
+      );
+      if (data) {
+        return data;
       }
-      if (!image) {
-        continue;
-      }
-
-      const col = Math.floor(
-        tilePixelRatio *
-          ((coordinate[0] - tileOrigin[0]) / tileResolution -
-            tileCoord[1] * tileSize[0]),
-      );
-
-      const row = Math.floor(
-        tilePixelRatio *
-          ((tileOrigin[1] - coordinate[1]) / tileResolution -
-            tileCoord[2] * tileSize[1]),
-      );
-
-      const gutter = Math.round(
-        tilePixelRatio * source.getGutterForProjection(viewState.projection),
-      );
-
-      return this.getImageData(image, col + gutter, row + gutter);
     }
 
     return null;
+  }
+
+  /**
+   * The pixel a coordinate falls on in a tile.  Array data is reported as band values,
+   * unstyled.
+   *
+   * @param {import("../../Tile.js").default} tile The tile.
+   * @param {import("../../tilegrid/TileGrid.js").default} tileGrid The tile grid the tile
+   * belongs to.
+   * @param {import("../../tilecoord.js").TileCoord} tileCoord The tile coordinate.
+   * @param {import("../../coordinate.js").Coordinate} coordinate The coordinate, in the
+   * tile grid's projection.
+   * @param {number} tilePixelRatio The tile pixel ratio.
+   * @param {number} gutter The tile gutter, in tile pixels.
+   * @return {Uint8ClampedArray|import("../../DataTile.js").ArrayLike|null} The data.
+   * @private
+   */
+  readTileData_(tile, tileGrid, tileCoord, coordinate, tilePixelRatio, gutter) {
+    /**
+     * @type {import('../../DataTile.js').ImageLike|null}
+     */
+    let image = null;
+    /**
+     * @type {import('../../DataTile.js').ArrayLike|null}
+     */
+    let arrayData = null;
+    if (tile instanceof ImageTile || tile instanceof ReprojTile) {
+      image = tile.getImage();
+    } else if (tile instanceof DataTile) {
+      const data = tile.getData();
+      if (data) {
+        image = asImageLike(data);
+        if (!image) {
+          arrayData = asArrayLike(data);
+        }
+      }
+    }
+    if (!image && !arrayData) {
+      return null;
+    }
+
+    const z = tileCoord[0];
+    const tileOrigin = tileGrid.getOrigin(z);
+    const tileSize = toSize(tileGrid.getTileSize(z));
+    const tileResolution = tileGrid.getResolution(z);
+
+    const col = Math.floor(
+      tilePixelRatio *
+        ((coordinate[0] - tileOrigin[0]) / tileResolution -
+          tileCoord[1] * tileSize[0]),
+    );
+
+    const row = Math.floor(
+      tilePixelRatio *
+        ((tileOrigin[1] - coordinate[1]) / tileResolution -
+          tileCoord[2] * tileSize[1]),
+    );
+
+    if (arrayData) {
+      const pixelSize = getPixelSize(tile, gutter);
+      const bandCount = getBandCount(arrayData, pixelSize);
+      const offset =
+        bandCount * ((row + gutter) * pixelSize[0] + (col + gutter));
+      if (arrayData instanceof DataView) {
+        const bytesPerPixel =
+          arrayData.byteLength / (pixelSize[0] * pixelSize[1]);
+        const start =
+          arrayData.byteOffset + offset * (bytesPerPixel / bandCount);
+        return new DataView(
+          arrayData.buffer.slice(start, start + bytesPerPixel),
+        );
+      }
+      return arrayData.slice(offset, offset + bandCount);
+    }
+
+    return this.getImageData(
+      /** @type {import('../../DataTile.js').ImageLike} */ (image),
+      col + gutter,
+      row + gutter,
+    );
   }
 
   /**
@@ -384,6 +645,7 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
       this.renderedProjection = frameState.viewState.projection;
     } else if (frameState.viewState.projection !== this.renderedProjection) {
       this.tileCache_.clear();
+      this.styledTileCache_.clear();
       this.renderedProjection = frameState.viewState.projection;
     }
 
@@ -399,6 +661,7 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
       if (this.renderedSourceKey_ === source.getKey()) {
         this.tileCache_.clear();
         this.sourceTileCache_?.clear();
+        this.styledTileCache_.clear();
       }
     }
     return true;
@@ -529,7 +792,7 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
       const cacheKey = getCacheKey(layerSource, staleKeys[i], z, x, y);
       if (tileCache.containsKey(cacheKey)) {
         const tile = tileCache.peek(cacheKey);
-        if (tile && tile.getState() === TileState.LOADED) {
+        if (tile && this.isDrawable(tile)) {
           tile.endTransition(getUid(this));
           addTileToLookup(tilesByZ, tile, z);
           return true;
@@ -573,7 +836,7 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
         let loaded = false;
         if (tileCache.containsKey(cacheKey)) {
           const tile = tileCache.peek(cacheKey);
-          if (tile && tile.getState() === TileState.LOADED) {
+          if (tile && this.isDrawable(tile)) {
             addTileToLookup(tilesByZ, tile, altZ);
             loaded = true;
           }
@@ -601,7 +864,10 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
    * @override
    */
   renderFrame(frameState, target) {
+    // read by `getStyledTileResolution_` when a tile is prepared further down
+    this.frameState_ = frameState;
     this.renderComplete = true;
+    this.ready = true;
     /**
      * TODO:
      *  maybe skip transition when not fully opaque
@@ -704,6 +970,8 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
 
     const uid = getUid(this);
     const time = frameState.time;
+    const tileGutter =
+      tilePixelRatio * tileSource.getGutterForProjection(projection);
 
     // look for cached tiles to use if a target tile is not ready
     for (const tile of tilesByZ[z]) {
@@ -713,7 +981,16 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
       }
       const tileCoord = tile.tileCoord;
 
+      // convert or style the data, so that `isDrawable` below has something to report on
       if (tileState === TileState.LOADED) {
+        const styledTile = this.prepareTile_(tile, tileGutter);
+        if (styledTile && !styledTile.isReady()) {
+          // a style is still running, so the map is not finished with this tile
+          this.ready = false;
+        }
+      }
+
+      if (this.isDrawable(tile)) {
         const alpha = tile.getAlpha(uid, time);
         if (alpha === 1) {
           // no need to look for alt tiles
@@ -826,10 +1103,8 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
         (tilePixelRatio * (canvasExtent[3] - originTileExtent[3])) /
           tileResolution,
       ]);
-      const tileGutter =
-        tilePixelRatio * tileSource.getGutterForProjection(projection);
       for (const tile of tilesByZ[currentZ]) {
-        if (tile.getState() !== TileState.LOADED) {
+        if (!this.isDrawable(tile)) {
           continue;
         }
         const tileCoord = tile.tileCoord;
@@ -924,6 +1199,7 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
         this.updateCacheSize(tilesCount);
         this.tileCache_.expireCache();
         this.sourceTileCache_?.expireCache();
+        this.styledTileCache_.expireCache();
       };
 
       frameState.postRenderFunctions.push(postRenderFunction);
@@ -942,6 +1218,7 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
       this.tileCache_.highWaterMark,
       tileCount * 2,
     );
+    this.styledTileCache_.highWaterMark = this.tileCache_.highWaterMark;
   }
 
   /**
@@ -966,10 +1243,9 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
       if (!data) {
         return;
       }
-      image = asImageLike(data);
-      if (!image) {
-        throw new Error('Rendering array data is not yet supported');
-      }
+      image = this.needsStyledTile_(data)
+        ? this.getStyledTile_(tile, gutter).getImage()
+        : asImageLike(data);
     } else {
       image = this.getTileImage(
         /** @type {import("../../ImageTile.js").default} */ (tile),
@@ -1068,6 +1344,14 @@ class CanvasTileLayerRenderer extends CanvasLayerRenderer {
       usedTiles[tileSourceKey] = {};
     }
     usedTiles[tileSourceKey][tile.getKey()] = true;
+  }
+
+  /**
+   * @override
+   */
+  disposeInternal() {
+    this.styledTileCache_.clear();
+    super.disposeInternal();
   }
 }
 

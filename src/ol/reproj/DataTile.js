@@ -2,7 +2,13 @@
  * @module ol/reproj/DataTile
  */
 
-import DataTile, {asArrayLike, asImageLike, toArray} from '../DataTile.js';
+import DataTile, {
+  asArrayLike,
+  asImageLike,
+  getBandCount,
+  getPixelSize,
+  toArray,
+} from '../DataTile.js';
 import TileState from '../TileState.js';
 import {createCanvasContext2D} from '../dom.js';
 import {listen, unlistenByKey} from '../events.js';
@@ -348,8 +354,6 @@ class ReprojDataTile extends DataTile {
       if (!tile || tile.getState() !== TileState.LOADED) {
         return;
       }
-      const size = tile.getSize();
-      const gutter = this.gutter_;
       /**
        * @type {import("../DataTile.js").ArrayLike}
        */
@@ -369,7 +373,7 @@ class ReprojDataTile extends DataTile {
         }
         tileData = toArray(imageLikeData);
       }
-      const pixelSize = [size[0] + 2 * gutter, size[1] + 2 * gutter];
+      const pixelSize = getPixelSize(tile, this.gutter_);
       const isFloat = tileData instanceof Float32Array;
       const pixelCount = pixelSize[0] * pixelSize[1];
       const DataType = isFloat ? Float32Array : Uint8ClampedArray;
@@ -378,10 +382,7 @@ class ReprojDataTile extends DataTile {
       );
       const bytesPerElement = DataType.BYTES_PER_ELEMENT;
       const bytesPerPixel = (bytesPerElement * tileDataR.length) / pixelCount;
-      const bytesPerRow = tileDataR.byteLength / pixelSize[1];
-      const bandCount = Math.floor(
-        bytesPerRow / bytesPerElement / pixelSize[0],
-      );
+      const bandCount = getBandCount(tileDataR, pixelSize);
       const extent = this.sourceTileGrid_.getTileCoordExtent(tile.tileCoord);
       extent[0] += source.offset;
       extent[2] += source.offset;
