@@ -24,12 +24,23 @@
  * @type {string}
  */
 const GLUE = `
+// One output array per pixel count, kept and written into again rather than made anew for
+// every tile.  A worker only ever runs one job at a time, and \`createImageBitmap\` has
+// copied the pixels by the time the next one arrives.
+const outputs = {};
+
 self.onmessage = async function (event) {
   const job = event.data;
   try {
     const render = handlers[job.styleId];
     if (!render) {
       throw new Error('No style registered for ' + job.styleId);
+    }
+    const length = job.size[0] * job.size[1] * 4;
+    let output = outputs[length];
+    if (!output) {
+      output = new Uint8ClampedArray(length);
+      outputs[length] = output;
     }
     // integer data is normalized to the 0 to 1 range, matching how an integer texture is
     // sampled; floating point data passes through
@@ -40,6 +51,7 @@ self.onmessage = async function (event) {
       bandScale,
       job.variables || {},
       job.resolution,
+      output,
     );
     const bitmap = await createImageBitmap(
       new ImageData(rgba, job.size[0], job.size[1]),

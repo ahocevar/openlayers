@@ -91,6 +91,19 @@ describe('ol/raster/pipeline.js', () => {
       );
     });
 
+    it('leaves nothing of an earlier tile in an array it writes into again', () => {
+      // the worker hands the same array to every job, so a discarded pixel has to be cleared
+      const compiled = compileStyleToFunction(
+        {color: ['color', 10, 20, 30]},
+        1,
+        1,
+      );
+      const out = new Uint8ClampedArray(8);
+      compiled(new Float32Array([0.5, 0.5]), [2, 1], 1, {}, NaN, out);
+      compiled(new Float32Array([0, 0.5]), [2, 1], 1, {}, NaN, out);
+      assert.deepEqual(Array.from(out), [0, 0, 0, 0, 10, 20, 30, 255]);
+    });
+
     it('applies contrast, exposure, gamma and brightness', () => {
       assert.deepEqual(
         render({contrast: 1}, 1, {data: new Float32Array([0.75])}),

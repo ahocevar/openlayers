@@ -60,9 +60,10 @@ function bandColor(bandCount, nodataOffset) {
  * throws where the style was written rather than on a worker.
  *
  * The source is a function expression taking the tile data, its size, the band scale, the style
- * variables and the resolution, and answering the rendered pixels.  Variables are read on every
- * call, so changing them needs no recompilation.  Returning source rather than a function is what
- * lets a worker be built from it without `eval`.
+ * variables, the resolution and an optional array to write into, and answering the rendered
+ * pixels.  Variables are read on every call, so changing them needs no recompilation.
+ * Returning source rather than a function is what lets a worker be built from it without
+ * `eval`.
  *
  * @param {import('../style/raster.js').RasterStyle} style The style.
  * @param {number} bandCount The number of bands per pixel.
@@ -116,11 +117,13 @@ export function compileStyleToSource(
       : colorToJs(style.color, parsingContext, loop);
   const color = compiledColor.value;
 
-  let source = `function (data, size, bandScale, vars, resolution) {
+  let source = `function (data, size, bandScale, vars, resolution, out) {
   const width = size[0];
   const height = size[1];
   const count = width * height;
-  const rgba = new Uint8ClampedArray(count * 4);
+  // the caller may hand in an array to write into, so that styling a tile again does not
+  // allocate a new one.  Every pixel is written, nodata included, so nothing stale shows.
+  const rgba = out || new Uint8ClampedArray(count * 4);
   const bandCount = ${bandCount};
   const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
@@ -150,6 +153,9 @@ ${
     ? ''
     : `    if (data[offset + ${nodataOffset}] === 0) {
       // the WebGL renderer discards the fragment; here that is a transparent pixel
+      rgba[target] = 0;
+      rgba[target + 1] = 0;
+      rgba[target + 2] = 0;
       rgba[target + 3] = 0;
       continue;
     }`
@@ -221,7 +227,7 @@ ${
  * @param {import('../style/raster.js').RasterStyle} style The style.
  * @param {number} bandCount The number of bands per pixel.
  * @param {number|undefined} nodataBandIndex The 1-based nodata band index.
- * @return {function(Uint8Array|Uint8ClampedArray|Float32Array, import('../size.js').Size, number, Object<string, *>, number=): Uint8ClampedArray} The render function.
+ * @return {function(Uint8Array|Uint8ClampedArray|Float32Array, import('../size.js').Size, number, Object<string, *>, number=, Uint8ClampedArray=): Uint8ClampedArray} The render function.
  */
 export function compileStyleToFunction(style, bandCount, nodataBandIndex) {
   const source = compileStyleToSource(style, bandCount, nodataBandIndex);
