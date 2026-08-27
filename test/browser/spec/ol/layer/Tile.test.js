@@ -33,6 +33,37 @@ describe('ol/layer/Tile', function () {
     });
   });
 
+  describe('style revisions', function () {
+    let layer;
+
+    beforeEach(function () {
+      layer = new TileLayer({
+        source: new OSM(),
+        style: {variables: {gamma: 1}, gamma: ['var', 'gamma']},
+      });
+    });
+
+    afterEach(function () {
+      layer.dispose();
+    });
+
+    it('moves both revisions when the style is replaced', function () {
+      const style = layer.getStyleRevision();
+      const render = layer.getRenderRevision();
+      layer.setStyle({gamma: 2});
+      assert.strictEqual(layer.getStyleRevision(), style + 1);
+      assert.strictEqual(layer.getRenderRevision(), render + 1);
+    });
+
+    it('leaves the style revision alone when only variables change', function () {
+      const style = layer.getStyleRevision();
+      const render = layer.getRenderRevision();
+      layer.updateStyleVariables({gamma: 1.5});
+      assert.strictEqual(layer.getStyleRevision(), style);
+      assert.strictEqual(layer.getRenderRevision(), render + 1);
+    });
+  });
+
   describe('getData()', () => {
     let map, target, layer;
     beforeEach(

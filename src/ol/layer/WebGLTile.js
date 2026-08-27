@@ -1,7 +1,8 @@
 /**
  * @module ol/layer/WebGLTile
  */
-import {ColorType, NumberType} from '../expr/expression.js';
+import {asArray} from '../color.js';
+import {ColorType, isType, NumberType} from '../expr/expression.js';
 import {
   getStringNumberEquivalent,
   newCompilationContext,
@@ -22,24 +23,10 @@ import BaseTileLayer from './BaseTile.js';
  */
 
 /**
- * @typedef {Object} Style
- * Translates tile data to rendered pixels.
+ * Translates tile data to rendered pixels.  Shared with {@link module:ol/layer/Tile~TileLayer},
+ * so a style can move between the canvas and WebGL renderers unchanged.
  *
- * @property {Object<string, (string|number)>} [variables] Style variables.  Each variable must hold a number or string.  These
- * variables can be used in the `color`, `brightness`, `contrast`, `exposure`, `saturation` and `gamma`
- * {@link import("../expr/expression.js").ExpressionValue expressions}, using the `['var', 'varName']` operator.
- * To update style variables, use the {@link import("./WebGLTile.js").default#updateStyleVariables} method.
- * @property {import("../expr/expression.js").ExpressionValue} [color] An expression applied to color values.
- * @property {import("../expr/expression.js").ExpressionValue} [brightness=0] Value used to decrease or increase
- * the layer brightness.  Values range from -1 to 1.
- * @property {import("../expr/expression.js").ExpressionValue} [contrast=0] Value used to decrease or increase
- * the layer contrast.  Values range from -1 to 1.
- * @property {import("../expr/expression.js").ExpressionValue} [exposure=0] Value used to decrease or increase
- * the layer exposure.  Values range from -1 to 1.
- * @property {import("../expr/expression.js").ExpressionValue} [saturation=0] Value used to decrease or increase
- * the layer saturation.  Values range from -1 to 1.
- * @property {import("../expr/expression.js").ExpressionValue} [gamma=1] Apply a gamma correction to the layer.
- * Values range from 0 to infinity.
+ * @typedef {import("../style/raster.js").RasterStyle} Style
  */
 
 /**
@@ -185,11 +172,31 @@ function parseStyle(style, bandCount, nodataBandIndex) {
 
   const styleVariables = style.variables || {};
 
-  for (const [variableName] of context.variables.entries()) {
+  /** @type {Array<string>} */
+  const uniformDeclarations = [];
+
+  for (const [variableName, variableType] of context.variables.entries()) {
     if (!(variableName in styleVariables)) {
       throw new Error(`Missing '${variableName}' in style variables`);
     }
     const uniformName = uniformNameForVariable(variableName);
+    if (isType(variableType, ColorType)) {
+      // a color is a vec4 in the shader, with every channel in the 0 to 1 range
+      uniformDeclarations.push(`uniform vec4 ${uniformName};`);
+      uniforms[uniformName] = function () {
+        const value = /** @type {string|import("../color.js").Color} */ (
+          styleVariables[variableName]
+        );
+        const color = [...asArray(value || '#eee')];
+        color[0] /= 255;
+        color[1] /= 255;
+        color[2] /= 255;
+        color[3] ??= 1;
+        return color;
+      };
+      continue;
+    }
+    uniformDeclarations.push(`uniform float ${uniformName};`);
     uniforms[uniformName] = function () {
       let value = styleVariables[variableName];
       if (typeof value === 'string') {
@@ -198,10 +205,6 @@ function parseStyle(style, bandCount, nodataBandIndex) {
       return value !== undefined ? value : -9999999; // to avoid matching with the first string literal
     };
   }
-
-  const uniformDeclarations = Object.keys(uniforms).map(function (name) {
-    return `uniform float ${name};`;
-  });
 
   const bandCountValue = bandCount !== undefined ? bandCount : 4;
   const textureCount = Math.ceil(bandCountValue / 4);
@@ -348,7 +351,7 @@ class WebGLTileLayer extends BaseTileLayer {
     this.style_ = style;
 
     /**
-     * @type {Object<string, (string|number)>}
+     * @type {import("../style/raster.js").RasterStyleVariables}
      * @private
      */
     this.styleVariables_ = this.style_.variables || {};
@@ -643,7 +646,7 @@ class WebGLTileLayer extends BaseTileLayer {
 
   /**
    * Update any variables used by the layer style and trigger a re-render.
-   * @param {Object<string, number>} variables Variables to update.
+   * @param {import("../style/raster.js").RasterStyleVariables} variables Variables to update.
    * @api
    */
   updateStyleVariables(variables) {

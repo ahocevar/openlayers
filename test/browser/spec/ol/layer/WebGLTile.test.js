@@ -469,6 +469,42 @@ describe('ol/layer/WebGLTile', function () {
         });
       }));
 
+    it('renders a variable used as a color', () =>
+      new Promise((resolve) => {
+        const layer = new WebGLTileLayer({
+          className: 'testlayer3',
+          source: new DataTileSource({
+            loader(z, x, y) {
+              return new Promise((resolve) => {
+                resolve(new ImageData(256, 256).data);
+              });
+            },
+          }),
+        });
+
+        map.addLayer(layer);
+        layer.setStyle({
+          variables: {tint: 'red'},
+          color: ['var', 'tint'],
+        });
+        map.renderSync();
+
+        layer.updateStyleVariables({tint: [255, 0, 255, 1]});
+
+        const targetContext = createCanvasContext2D(100, 100);
+        layer.on('postrender', () => {
+          targetContext.clearRect(0, 0, 100, 100);
+          targetContext.drawImage(target.querySelector('.testlayer3'), 0, 0);
+        });
+        map.once('rendercomplete', () => {
+          assert.deepEqual(
+            Array.from(targetContext.getImageData(0, 0, 1, 1).data),
+            [255, 0, 255, 255],
+          );
+          resolve();
+        });
+      }));
+
     it('can be called before the layer is rendered', function () {
       layer = new WebGLTileLayer({
         style: {
