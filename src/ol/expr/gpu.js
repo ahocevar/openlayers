@@ -216,6 +216,43 @@ function createCompiler(output) {
 }
 
 /**
+ * Operators whose compiled GLSL already evaluates to a `bool` (regardless of the
+ * expected return type carried by the expression).
+ * @type {Set<string>}
+ */
+const booleanOperators = new Set([
+  Ops.Not,
+  Ops.Any,
+  Ops.All,
+  Ops.Between,
+  Ops.In,
+  Ops.Has,
+  Ops.Equal,
+  Ops.NotEqual,
+  Ops.GreaterThan,
+  Ops.GreaterThanOrEqualTo,
+  Ops.LessThan,
+  Ops.LessThanOrEqualTo,
+]);
+
+/**
+ * Compiles an expression used where a boolean is expected, coercing it to a GLSL `bool`.
+ * Expressions that already evaluate to a `bool` are used as-is; other (float) values are
+ * truthy when not equal to zero.
+ * @param {Expression} expression The expression to compile.
+ * @param {CompilationContext} context The compilation context.
+ * @return {string} A GLSL boolean expression.
+ */
+function compileAsBoolean(expression, context) {
+  const compiled = compile(expression, expression.type, context);
+  const isBoolean =
+    (expression instanceof CallExpression &&
+      booleanOperators.has(expression.operator)) ||
+    isType(expression.type, BooleanType);
+  return isBoolean ? compiled : `(${compiled} != 0.0)`;
+}
+
+/**
  * @type {Object<string, Compiler>}
  */
 const compilers = {
@@ -257,9 +294,16 @@ const compilers = {
   [Ops.Resolution]: () => 'u_resolution',
   [Ops.Zoom]: () => 'u_zoom',
   [Ops.Time]: () => 'u_time',
-  [Ops.Any]: createCompiler((compiledArgs) => `(${compiledArgs.join(` || `)})`),
-  [Ops.All]: createCompiler((compiledArgs) => `(${compiledArgs.join(` && `)})`),
-  [Ops.Not]: createCompiler(([value]) => `(!${value})`),
+  [Ops.Any]: (context, expression) => {
+    const args = expression.args.map((arg) => compileAsBoolean(arg, context));
+    return `(${args.join(' || ')})`;
+  },
+  [Ops.All]: (context, expression) => {
+    const args = expression.args.map((arg) => compileAsBoolean(arg, context));
+    return `(${args.join(' && ')})`;
+  },
+  [Ops.Not]: (context, expression) =>
+    `(!${compileAsBoolean(expression.args[0], context)})`,
   [Ops.Equal]: createCompiler(
     ([firstValue, secondValue]) => `(${firstValue} == ${secondValue})`,
   ),
@@ -336,16 +380,16 @@ const compilers = {
     }
     return result;
   }),
-  [Ops.Case]: createCompiler((compiledArgs) => {
-    const fallback = compiledArgs[compiledArgs.length - 1];
-    let result = fallback;
-    for (let i = compiledArgs.length - 3; i >= 0; i -= 2) {
-      const condition = compiledArgs[i];
-      const output = compiledArgs[i + 1];
+  [Ops.Case]: (context, expression, type) => {
+    const args = expression.args;
+    let result = compile(args[args.length - 1], type, context);
+    for (let i = args.length - 3; i >= 0; i -= 2) {
+      const condition = compileAsBoolean(args[i], context);
+      const output = compile(args[i + 1], type, context);
       result = `(${condition} ? ${output} : ${result})`;
     }
     return result;
-  }),
+  },
   [Ops.In]: createCompiler(([needle, ...haystack], context) => {
     const funcName = computeOperatorFunctionName('in', context);
     const tests = [];

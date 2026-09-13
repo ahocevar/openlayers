@@ -63,8 +63,9 @@ import {toSize} from '../size.js';
  *
  * * Transform operators:
  *   * `['case', condition1, output1, ...conditionN, outputN, fallback]` selects the first output whose corresponding
- *     condition evaluates to `true`. If no match is found, returns the `fallback` value.
- *     All conditions should be `boolean`, output and fallback can be any kind.
+ *     condition evaluates to a truthy value. If no match is found, returns the `fallback` value.
+ *     Conditions can be `boolean`, `number` or `string` (a value is falsy if it is `false`, `0` or an empty string);
+ *     output and fallback can be any kind.
  *   * `['match', input, match1, output1, ...matchN, outputN, fallback]` compares the `input` value against all
  *     provided `matchX` values, returning the output associated with the first valid match. If no match is found,
  *     returns the `fallback` value.
@@ -98,9 +99,10 @@ import {toSize} from '../size.js';
  *   * `['>=', value1, value2]` returns `true` if `value1` is greater than or equals `value2`, or `false` otherwise.
  *   * `['==', value1, value2]` returns `true` if `value1` equals `value2`, or `false` otherwise.
  *   * `['!=', value1, value2]` returns `true` if `value1` does not equal `value2`, or `false` otherwise.
- *   * `['!', value1]` returns `false` if `value1` is `true` or greater than `0`, or `true` otherwise.
- *   * `['all', value1, value2, ...]` returns `true` if all the inputs are `true`, `false` otherwise.
- *   * `['any', value1, value2, ...]` returns `true` if any of the inputs are `true`, `false` otherwise.
+ *   * `['!', value1]` returns `false` if `value1` is truthy, or `true` otherwise. `value1` can be `boolean`,
+ *     `number` or `string`; it is falsy if it is `false`, `0` or an empty string.
+ *   * `['all', value1, value2, ...]` returns `true` if all the inputs are truthy, `false` otherwise.
+ *   * `['any', value1, value2, ...]` returns `true` if any of the inputs are truthy, `false` otherwise.
  *   * `['between', value1, value2, value3]` returns `true` if `value1` is contained between `value2` and `value3`
  *     (inclusively), or `false` otherwise.
  *   * `['in', needle, haystack]` returns `true` if `needle` is found in `haystack`, and
@@ -152,6 +154,14 @@ export const ColorType = 1 << numTypes++;
 export const NumberArrayType = 1 << numTypes++;
 export const SizeType = 1 << numTypes++;
 export const AnyType = Math.pow(2, numTypes) - 1;
+
+/**
+ * Types that have a meaningful truthiness and can therefore be used where a
+ * boolean is expected (e.g. as an argument to `!`, `any`, `all`, or as a `case`
+ * condition). A value is falsy if it is `false`, `0`, or an empty string.
+ * @type {ValueType}
+ */
+export const TruthyType = BooleanType | NumberType | StringType;
 
 const typeNames = {
   [BooleanType]: 'boolean',
@@ -474,15 +484,15 @@ const parsers = {
   [Ops.Time]: createCallExpressionParser(usesMapState, withNoArgs),
   [Ops.Any]: createCallExpressionParser(
     hasArgsCount(2, Infinity),
-    withArgsOfType(BooleanType),
+    withArgsOfType(TruthyType),
   ),
   [Ops.All]: createCallExpressionParser(
     hasArgsCount(2, Infinity),
-    withArgsOfType(BooleanType),
+    withArgsOfType(TruthyType),
   ),
   [Ops.Not]: createCallExpressionParser(
     hasArgsCount(1, 1),
-    withArgsOfType(BooleanType),
+    withArgsOfType(TruthyType),
   ),
   [Ops.Equal]: createCallExpressionParser(
     hasArgsCount(2, 2),
@@ -1070,7 +1080,7 @@ function withCaseArgs(encoded, returnType, context) {
   const args = new Array(encoded.length - 1);
   for (let i = 0; i < args.length - 1; i += 2) {
     try {
-      const condition = parse(encoded[i + 1], BooleanType, context);
+      const condition = parse(encoded[i + 1], TruthyType, context);
       args[i] = condition;
     } catch (err) {
       throw new Error(

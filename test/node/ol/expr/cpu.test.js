@@ -282,6 +282,24 @@ describe('ol/expr/cpu.js', () => {
         expected: false,
       },
       {
+        name: 'not (truthy string)',
+        type: BooleanType,
+        expression: ['!', ['get', 'label']],
+        context: {
+          properties: {label: 'a label'},
+        },
+        expected: false,
+      },
+      {
+        name: 'not (empty string)',
+        type: BooleanType,
+        expression: ['!', ['get', 'label']],
+        context: {
+          properties: {label: ''},
+        },
+        expected: true,
+      },
+      {
         name: 'equal comparison (true)',
         type: BooleanType,
         expression: ['==', ['get', 'number'], 42],

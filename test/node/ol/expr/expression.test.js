@@ -205,6 +205,26 @@ describe('ol/expr/expression.js', () => {
       });
     });
 
+    describe('truthy conditions (!, any, all, case)', () => {
+      it('allows a boolean operator to read a property also used as a string', () => {
+        const context = newParsingContext();
+        parse(['!', ['get', 'label']], BooleanType, context);
+        parse(['concat', ['get', 'label'], '!'], StringType, context);
+        assert.strictEqual(context.properties.get('label'), StringType);
+      });
+
+      it('narrows a property read as a number and as a case condition to number', () => {
+        const context = newParsingContext();
+        const expression = parse(
+          ['+', ['get', 'foo'], ['case', ['get', 'foo'], 4, 5]],
+          NumberType,
+          context,
+        );
+        assert.strictEqual(expression.type, NumberType);
+        assert.strictEqual(context.properties.get('foo'), NumberType);
+      });
+    });
+
     it('parses a var expression', () => {
       const context = newParsingContext();
       const expression = parse(['var', 'foo'], AnyType, context);
@@ -647,25 +667,19 @@ describe('ol/expr/expression.js', () => {
       },
       {
         name: 'no overlap between two get operators using the same property',
-        expression: [
-          '+',
-          ['get', 'myAttr'],
-          3,
-          ['case', ['get', 'myAttr'], 4, 5],
-        ],
+        expression: ['concat', ['get', 'myAttr'], ['+', ['get', 'myAttr'], 1]],
         error:
-          'the myAttr property read by a get operation was expected to match this type: boolean, got number',
+          'the myAttr property read by a get operation was expected to match this type: number, got string',
       },
       {
         name: 'no overlap between two get operators using the same nested property',
         expression: [
-          '+',
+          'concat',
           ['get', 'myAttr', 2, 'bla'],
-          3,
-          ['case', ['get', 'myAttr', 2, 'bla'], 4, 5],
+          ['+', ['get', 'myAttr', 2, 'bla'], 1],
         ],
         error:
-          'the myAttr.2.bla property read by a get operation was expected to match this type: boolean, got number',
+          'the myAttr.2.bla property read by a get operation was expected to match this type: number, got string',
       },
       {
         name: 'no argument specified for get',
