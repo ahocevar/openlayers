@@ -3,6 +3,7 @@ import Map from '../../../../../src/ol/Map.js';
 import View from '../../../../../src/ol/View.js';
 import {createCanvasContext2D} from '../../../../../src/ol/dom.js';
 import {getForViewAndSize} from '../../../../../src/ol/extent.js';
+import TileLayer from '../../../../../src/ol/layer/Tile.js';
 import WebGLTileLayer from '../../../../../src/ol/layer/WebGLTile.js';
 import {getRenderPixel} from '../../../../../src/ol/render.js';
 import {sourcesFromTileGrid} from '../../../../../src/ol/source.js';
@@ -550,6 +551,39 @@ describe('ol/layer/WebGLTile', function () {
           resolve();
         });
       }));
+  });
+
+  describe('render()', () => {
+    it('does not leave stale elements when a grouped layer renders nothing', () => {
+      const dataSource = () =>
+        new DataTileSource({
+          loader: () => new ImageData(256, 256).data,
+        });
+      const base1 = new TileLayer({source: dataSource()});
+      const base2 = new TileLayer({source: dataSource(), visible: false});
+      map.getLayers().insertAt(0, base1);
+      map.getLayers().insertAt(1, base2);
+      map.addLayer(
+        new WebGLTileLayer({
+          className: 'testlayer',
+          source: dataSource(),
+          extent: [1e7, 1e7, 1.1e7, 1.1e7],
+        }),
+      );
+      map.addLayer(
+        new WebGLTileLayer({className: 'testlayer', source: dataSource()}),
+      );
+      map.renderSync();
+
+      base1.setVisible(false);
+      base2.setVisible(true);
+      map.renderSync();
+
+      assert.strictEqual(
+        target.querySelector('.ol-layers').childElementCount,
+        2,
+      );
+    });
   });
 
   describe('multiple sources', () => {
